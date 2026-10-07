@@ -182,7 +182,7 @@ function isBinaryUndefinedCheck(node: ESTree.BinaryExpression, varName: string):
     return isNilLiteralOrIdentifier(node.right);
   }
   if (node.right.type === "Identifier" && node.right.name === varName) {
-    return isNilLiteralOrIdentifier(node.left);
+    return node.left.type !== "PrivateIdentifier" && isNilLiteralOrIdentifier(node.left);
   }
 
   return false;
