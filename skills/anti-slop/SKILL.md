@@ -3,85 +3,49 @@ name: anti-slop
 description: Deterministic code review gate. Use when running anti-slop or a review gate before finishing a code change, fixing anti-slop findings, or running mutation, CRAP, or PR-size checks.
 ---
 
-Deterministic code review gate that catches structural defects before review.
-
-Point to `anti-slop --help` for available CLI options and documentation in the target repository for full reference:
-- CLI options and flags: run `anti-slop --help`
-- Rule definitions and checks: see README `## Rules`
-- Mutation testing guidance: see `documentation/mutation-testing.md`
-- CRAP metric guidance: see `documentation/crap-metric.md`
-
-## Gate target: *green*
-
-The review gate is *green* when the run reports 0 errors and no new warnings on the scoped files. Keep repository rule configuration (`anti-slop.json`, ESLint config) intact; fix findings directly in source code.
+The gate is *green* when the scoped run reports 0 errors and the warning count on the scoped files is no higher than before your change. Exit code 0 alone is not *green*: warnings exit 0 too.
 
 ## Steps
 
-### 1. Scope
+### 1. Baseline and scope
 
-Pick the narrowest target that covers the modified code:
-- Staged changes before commit: `--staged`
-- Branch changes against a base branch: `--since <base>` (such as `origin/main`)
-- Explicit files or folders: provide explicit paths (for example `src/services/`)
+Pick the narrowest scope that covers your change: `--staged`, `--since <base>` (for example `origin/main`), or explicit paths. Before editing, or by stashing your change, record the warning count on that scope from the summary line `Found N error(s), M warning(s)`.
 
-Done when the scope matches the files changed in the current task.
+Done when the scope matches the files you changed and you have the baseline warning count.
 
 ### 2. Run
 
-Run anti-slop on the selected scope with LLM-oriented formatting:
-
 ```bash
 anti-slop <scope> --format llm
 ```
 
-For scripts or programmatic pipelines, use `--json`:
+Use `--json` instead when a script consumes the result. Exit codes: `0` no errors, `1` errors found, `2` system or read failure. On `2`, fix the environment or file access and rerun.
 
-```bash
-anti-slop <scope> --json
-```
-
-Exit code meanings:
-- `0`: All checks passed (*green*).
-- `1`: Code defects or boundary errors found. Read every reported finding and proceed to step 3.
-- `2`: System error or read failure. Resolve the environment or file access failure, then rerun.
-
-Done when the command exits `0`, `1`, or `2` and all findings have been inspected.
+Done when the run exits `0` or `1` and you have read every finding.
 
 ### 3. Fix in code
 
-Fix each reported finding directly in the code location it identifies:
-- Address defects, type boundaries, hollow tests, and smells in source files.
-- Preserve repository rule configuration and existing suppressions untouched.
+Fix every error, and every warning your change introduced, in the code the finding points at. The repository's rule config (`anti-slop.json`, ESLint config) and its suppressions belong to the repo owner; leave them as they are.
 
-Done when every finding reported in step 2 has an edit in application code or tests.
+Done when each of those findings has a matching code edit.
 
 ### 4. Loop
 
-Rerun anti-slop on the exact same scope:
+Rerun step 2 on the same scope.
 
-```bash
-anti-slop <scope> --format llm
-```
-
-Done when the run is *green*: 0 errors and warning counts on scoped files have not grown.
+Done when the run is *green*.
 
 ### 5. Heavy checks
 
-Run heavy checks only when requested by the user or required by repository CI:
-- **Mutation testing**: Run `--mutation-preflight` first to estimate mutants and safe concurrency. Limit mutation runs to 8 files or fewer (`--max-mutation-files 8`):
-  ```bash
-  anti-slop --preflight <scope>
-  anti-slop --mutation <scope>
-  ```
-  See `documentation/mutation-testing.md` for mutation score targets and runner options.
-- **CRAP metric**: Requires test coverage data (e.g. `reports/coverage/lcov.info` generated from test runs):
-  ```bash
-  anti-slop --crap <scope>
-  ```
-  See `documentation/crap-metric.md` for cyclomatic complexity and risk thresholds.
-- **PR size**: Requires a git base reference:
-  ```bash
-  anti-slop --checks pr-size --since <base>
-  ```
+Run these only when the user asks or the repository's CI runs them:
+- **Mutation**: `anti-slop --mutation-preflight <scope>` first, then `anti-slop --mutation <scope>` on 8 files or fewer.
+- **CRAP**: `anti-slop --crap <scope>`; needs coverage data from a test run.
+- **PR size**: `anti-slop --checks pr-size --since <base>`.
 
-Done when the requested heavy check executes and satisfies the repository threshold.
+Done when each requested check passes the repository's threshold.
+
+## Reference
+
+- Flags and defaults: `anti-slop --help`.
+- What a rule means and how to fix it: [Rules](https://github.com/KonstantinAxt/anti-slop#rules).
+- Mutation and CRAP detail: [mutation-testing.md](https://github.com/KonstantinAxt/anti-slop/blob/main/documentation/mutation-testing.md), [crap-metric.md](https://github.com/KonstantinAxt/anti-slop/blob/main/documentation/crap-metric.md).
