@@ -46,7 +46,7 @@ function parseJson(raw: string): { ok: true; val: Record<string, unknown> } | { 
   }
 }
 
-function parseFindingRange(range: unknown): { ok: true; start: number; end: number } | { ok: false; error: string } {
+function parseFindingRange(range: unknown, lineCount: number): { ok: true; start: number; end: number } | { ok: false; error: string } {
   if (typeof range !== "object" || range === null || Array.isArray(range)) return { ok: false, error: "Bad range" };
 
   for (const key of Object.keys(range)) if (!RANGE_KEYS[key]) return { ok: false, error: `Extra range key: ${key}` };
@@ -58,6 +58,9 @@ function parseFindingRange(range: unknown): { ok: true; start: number; end: numb
   if (typeof start !== "number" || !Number.isInteger(start) || start < 1 || typeof end !== "number" || !Number.isInteger(end) || end < 1) {
     return { ok: false, error: "Invalid start/end" };
   }
+
+  if (start > end) return { ok: false, error: "start > end" };
+  if (start > lineCount || end > lineCount) return { ok: false, error: "Lines outside file" };
 
   return { ok: true, start, end };
 }
@@ -78,15 +81,18 @@ function parseFindingTextAndConfidence(
   return { ok: true, reason: obj.reason, confidence: obj.confidence, ...(fix ? { fix } : {}) };
 }
 
-function parseFinding(obj: unknown): { ok: true; finding: JudgeFinding } | { ok: false; error: string } {
+function parseFinding(obj: unknown, fileLineCounts: Map<string, number>): { ok: true; finding: JudgeFinding } | { ok: false; error: string } {
   if (typeof obj !== "object" || obj === null || Array.isArray(obj)) return { ok: false, error: "Bad finding" };
 
   for (const key of Object.keys(obj)) if (!ITEM_KEYS[key]) return { ok: false, error: `Extra key: ${key}` };
 
   if (!("file" in obj) || typeof obj.file !== "string") return { ok: false, error: "Bad file" };
+  const lineCount = fileLineCounts.get(obj.file);
+
+  if (lineCount === undefined) return { ok: false, error: `Unknown file: ${obj.file}` };
   if (!("line_range" in obj)) return { ok: false, error: "Missing line_range" };
 
-  const range = parseFindingRange(obj.line_range);
+  const range = parseFindingRange(obj.line_range, lineCount);
 
   if (!range.ok) return range;
 
@@ -98,7 +104,7 @@ function parseFinding(obj: unknown): { ok: true; finding: JudgeFinding } | { ok:
   return { ok: true, finding: { file: obj.file, line_range: { start: range.start, end: range.end }, problem_category: "unnecessary_under_invariant", reason: tc.reason, confidence: tc.confidence, ...(tc.fix ? { suggested_fix: tc.fix } : {}) } };
 }
 
-export function validateJudgeOutput(raw: string): ValidationResult {
+export function validateJudgeOutput(raw: string, sentFiles: { path: string; content: string }[]): ValidationResult {
   const parsed = parseJson(raw);
 
   if (!parsed.ok) return parsed;
@@ -113,10 +119,17 @@ export function validateJudgeOutput(raw: string): ValidationResult {
   if (verdict === "FLAG" && list.length === 0) return { ok: false, error: "FLAG needs findings" };
   if ((verdict === "ALLOW" || verdict === "NEEDS_HUMAN_ATTENTION") && list.length > 0) return { ok: false, error: `${verdict} requires empty findings` };
 
+  const fileLineCounts = new Map<string, number>();
+
+  for (const file of sentFiles) {
+    const lineCount = file.content.length === 0 ? 0 : file.content.split("\n").length;
+    fileLineCounts.set(file.path, lineCount);
+  }
+
   const findings: JudgeFinding[] = [];
 
   for (const item of list) {
-    const res = parseFinding(item);
+    const res = parseFinding(item, fileLineCounts);
 
     if (!res.ok) return res;
     findings.push(res.finding);
