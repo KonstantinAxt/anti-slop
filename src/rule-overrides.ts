@@ -173,6 +173,10 @@ const RULE_ALIASES: Record<string, string[]> = {
     "slop/no-env-shell-command",
     "no-env-shell-command",
   ],
+  "slop/no-redundant-presence-check": [
+    "slop/no-redundant-presence-check",
+    "no-redundant-presence-check",
+  ],
 
   // Stale mocks
   "stale-mocks/stale-mock-export": ["stale-mocks/stale-mock-export"],

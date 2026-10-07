@@ -21,6 +21,7 @@ describe("Repository Rule Priority Guard", () => {
       "react-perf/jsx-no-new-object-as-prop": "error",
       "array-callback-return": "off",
       "slop/no-env-shell-command": "off",
+      "slop/no-redundant-presence-check": "off",
     };
 
     expect(getRepoOverrideForRule(rules, "react/no-array-index-key")?.severity).toBe("off");
@@ -29,6 +30,7 @@ describe("Repository Rule Priority Guard", () => {
     expect(getRepoOverrideForRule(rules, "react-perf/jsx-no-new-object-as-prop")?.severity).toBe("error");
     expect(getRepoOverrideForRule(rules, "array-callback-return")?.severity).toBe("off");
     expect(getRepoOverrideForRule(rules, "slop/no-env-shell-command")?.severity).toBe("off");
+    expect(getRepoOverrideForRule(rules, "slop/no-redundant-presence-check")?.severity).toBe("off");
     expect(getRepoOverrideForRule(rules, "react/jsx-key")).toBeNull();
   });
 
