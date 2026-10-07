@@ -24,6 +24,15 @@ pnpm link --global
 
 Now you can run `anti-slop` from any directory on your computer.
 
+### Use with coding agents
+
+To let coding agents discover and run anti-slop on their own work, copy or symlink `skills/anti-slop` into your agent skills directory (for example `~/.agents/skills/` or `~/.claude/skills/`):
+
+```bash
+mkdir -p ~/.agents/skills
+ln -s "$(pwd)/skills/anti-slop" ~/.agents/skills/anti-slop
+```
+
 ## Usage
 
 If you want to review changes before a commit, run this command:
