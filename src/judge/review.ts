@@ -23,6 +23,7 @@ import { validateJudgeOutput } from "./validator.js";
 const DEFAULT_TIMEOUT_MS = 25000;
 const DEFAULT_MAX_TOKENS = 2000;
 const DEFAULT_INPUT_TOKEN_CEILING = 12000;
+const CHARS_PER_TOKEN = 4;
 
 // The anti-slop checkout's own commit, not the caller's repository; null for installs without git metadata.
 function resolveEngineCommit(): string | null {
@@ -62,6 +63,14 @@ export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): P
     droppedFiles,
   };
 
+  const estimatedTokens = Math.ceil(userPrompt.length / CHARS_PER_TOKEN);
+
+  if (estimatedTokens > inputTokenCeiling) {
+    const latencyMs = Math.round(performance.now() - startTime);
+
+    return { disposition: "ABSTAIN", abstainReason: "TOKEN_CEILING", findings: [], provenance: { ...base, latencyMs } };
+  }
+
   let completion: { text: string; usage?: { inputTokens: number; outputTokens: number } };
 
   try {
@@ -81,7 +90,7 @@ export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): P
 
   const latencyMs = Math.round(performance.now() - startTime);
   const provenance: JudgeProvenance = { ...base, latencyMs, ...(completion.usage != null ? { usage: completion.usage } : {}) };
-  const validation = validateJudgeOutput(completion.text);
+  const validation = validateJudgeOutput(completion.text, input.files);
 
   if (!validation.ok) {
     return { disposition: "ABSTAIN", abstainReason: "MALFORMED_OUTPUT", findings: [], provenance };
