@@ -27,6 +27,18 @@ export { formatOutput } from "./formatters.js";
 export type { AntiSlopOptions, AntiSlopResult, CheckExecution, CheckStatus, CrapEntry, Finding, MutationScoreMetrics, Severity } from "./types.js";
 export { checkPrSize, parseNumstat, type PrSizeOptions } from "./checks/pr-size.js";
 export { checkMutation, checkMutationWithStryker } from "./checks/stryker-runner.js";
+export type {
+  JudgeAbstainReason,
+  JudgeFinding,
+  JudgeInput,
+  JudgeProvider,
+  JudgeResult,
+} from "./judge/types.js";
+export {
+  createOpenAICompatibleProvider,
+  createStaticProvider,
+} from "./judge/provider.js";
+export { reviewWithJudge } from "./judge/review.js";
 
 const CODE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
 const IGNORED_DIRS = new Set(["node_modules", "dist", "build", ".git", ".next", ".turbo", "e2e-fixtures", "artifacts", "benchmarks"]);
@@ -214,8 +226,36 @@ function auditConfig(
   return applyRepoRuleGuard(raw, rules);
 }
 
-const BASE_CHECKS = ["tsconfig", "eslint", "strict-ts", "boundaries", "fractal", "scars", "hollow-tests", "stale-mocks", "dead-code", "jscpd"] as const;
-const AST_CHECKS = ["boundaries", "fractal", "scars", "hollow-tests", "stale-mocks"] as const;
+const CHECK_TSCONFIG = "tsconfig";
+const CHECK_ESLINT = "eslint";
+const CHECK_STRICT_TS = "strict-ts";
+const CHECK_BOUNDARIES = "boundaries";
+const CHECK_FRACTAL = "fractal";
+const CHECK_SCARS = "scars";
+const CHECK_HOLLOW_TESTS = "hollow-tests";
+const CHECK_STALE_MOCKS = "stale-mocks";
+const CHECK_DEAD_CODE = "dead-code";
+const CHECK_JSCPD = "jscpd";
+
+const BASE_CHECKS = [
+  CHECK_TSCONFIG,
+  CHECK_ESLINT,
+  CHECK_STRICT_TS,
+  CHECK_BOUNDARIES,
+  CHECK_FRACTAL,
+  CHECK_SCARS,
+  CHECK_HOLLOW_TESTS,
+  CHECK_STALE_MOCKS,
+  CHECK_DEAD_CODE,
+  CHECK_JSCPD,
+] as const;
+const AST_CHECKS = [
+  CHECK_BOUNDARIES,
+  CHECK_FRACTAL,
+  CHECK_SCARS,
+  CHECK_HOLLOW_TESTS,
+  CHECK_STALE_MOCKS,
+] as const;
 
 async function scanTargets(
   cwd: string,
