@@ -3,9 +3,14 @@ import { checkWithEslint } from "../src/checks/eslint-runner.js";
 
 const RULE_NAME = "slop/no-redundant-presence-check";
 
-async function expectViolation(code: string): Promise<void> {
+async function checkRule(code: string) {
   const findings = await checkWithEslint("src/service.ts", code);
-  const ruleFindings = findings.filter((finding) => finding.rule === RULE_NAME);
+
+  return findings.filter((finding) => finding.rule === RULE_NAME);
+}
+
+async function expectViolation(code: string): Promise<void> {
+  const ruleFindings = await checkRule(code);
 
   expect(ruleFindings).toHaveLength(1);
   expect(ruleFindings[0]?.message).toContain("unreachable guard");
@@ -14,8 +19,7 @@ async function expectViolation(code: string): Promise<void> {
 }
 
 async function expectDoubleLookup(code: string): Promise<void> {
-  const findings = await checkWithEslint("src/service.ts", code);
-  const ruleFindings = findings.filter((finding) => finding.rule === RULE_NAME);
+  const ruleFindings = await checkRule(code);
 
   expect(ruleFindings).toHaveLength(1);
   expect(ruleFindings[0]?.message).toContain("before 'get(");
@@ -23,8 +27,7 @@ async function expectDoubleLookup(code: string): Promise<void> {
 }
 
 async function expectClean(code: string): Promise<void> {
-  const findings = await checkWithEslint("src/service.ts", code);
-  const ruleFindings = findings.filter((finding) => finding.rule === RULE_NAME);
+  const ruleFindings = await checkRule(code);
 
   expect(ruleFindings).toHaveLength(0);
 }
