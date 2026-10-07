@@ -28,7 +28,7 @@ export type { AntiSlopOptions, AntiSlopResult, CheckExecution, CheckStatus, Crap
 export { checkPrSize, parseNumstat, type PrSizeOptions } from "./checks/pr-size.js";
 export { checkMutation, checkMutationWithStryker } from "./checks/stryker-runner.js";
 export type { JudgeAbstainReason, JudgeFinding, JudgeInput, JudgeProvider, JudgeResult } from "./judge/types.js";
-export { createStaticProvider } from "./judge/provider.js";
+export { createOpenAICompatibleProvider, createStaticProvider } from "./judge/provider.js";
 export { reviewWithJudge } from "./judge/review.js";
 
 const CODE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);

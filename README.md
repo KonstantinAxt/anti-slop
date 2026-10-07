@@ -24,15 +24,6 @@ pnpm link --global
 
 Now you can run `anti-slop` from any directory on your computer.
 
-### Use with coding agents
-
-To let coding agents discover and run anti-slop on their own work, copy or symlink `skills/anti-slop` into your agent skills directory (for example `~/.agents/skills/` or `~/.claude/skills/`):
-
-```bash
-mkdir -p ~/.agents/skills
-ln -s "$(pwd)/skills/anti-slop" ~/.agents/skills/anti-slop
-```
-
 ## Usage
 
 If you want to review changes before a commit, run this command:
@@ -436,6 +427,39 @@ Review burden lines are calculated as:
 $$\text{Review Lines} = \text{Additions} + \min(\text{Deletions}, \text{Additions})$$
 
 Pure deletions of dead code do not inflate the review burden score. Lockfiles, snapshots, minified bundles, test fixtures, and generated artifacts are excluded by default.
+
+### LLM Judge (Experimental, Library Only)
+
+anti-slop provides an optional, blinded semantic judge via `reviewWithJudge(...)` in the TypeScript API. This check is strictly opt-in and off by default. It is not exposed through CLI flags or automated CI runs.
+
+#### Purpose and Rubric
+
+The judge targets a single semantic failure mode: `unnecessary_under_invariant`. This flags newly added defensive checks, fallbacks, or redundant guards that visible type contracts, callers, or earlier guards in the changed files already rule out.
+
+- **FLAG**: The code is redundant under an invariant visible in the diff or provided files.
+- **ALLOW**: The check occurs at a real trust boundary (for example, parsing external input, untyped JavaScript, or unknown data).
+- **ABSTAIN (NEEDS_HUMAN_ATTENTION)**: The invariant would live only outside the provided files. The judge never guesses unseen code.
+
+Judge findings are opinions and never alter deterministic `runAntiSlop` results.
+
+#### Data Sent to the Remote Provider
+
+The caller explicitly provides the base URL, API key, and model name. The library reads no environment variables and stores no network endpoints.
+
+Before transmitting prompts to the remote provider:
+- **Sensitive Files Dropped**: Files matching `.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, and SSH keys (`id_rsa*`) are completely dropped.
+- **Secret Redaction**: Common secret token formats (AWS keys, GitHub tokens, API keys starting with `sk-`, JWTs, Bearer headers, PEM blocks) and high-entropy string assignments to variables containing key, secret, token, or password are masked with `[REDACTED]`.
+- **Blinded Evaluation**: Only the redacted git diff and redacted file contents are sent. Deterministic findings, labels, and rule results are never included in the prompt.
+
+#### Abstain Reasons
+
+The judge never throws for network or model failures. Instead, it returns an `ABSTAIN` disposition with one of the following reasons:
+- `NEEDS_HUMAN_ATTENTION`: The changed code cannot be verified with the provided files alone.
+- `TOKEN_CEILING`: The input prompt exceeds the configured token ceiling (default: 12000 estimated tokens). The remote provider is not called.
+- `TIMEOUT`: The provider failed to respond within the configured timeout (default: 25000 ms).
+- `NETWORK_ERROR`: Network connectivity failed or connection was refused.
+- `PROVIDER_ERROR`: The provider returned an HTTP error status (such as 5xx) or an invalid response payload.
+- `MALFORMED_OUTPUT`: The model response violated the required JSON schema, reported findings for files not in the input, or reported inconsistent dispositions.
 
 ## Continuous Integration & Merge Queue
 
