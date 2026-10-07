@@ -44,6 +44,7 @@ Boundaries:
 ## Output Requirements
 Respond with valid JSON:
 - Top-level keys: "verdict" ("FLAG" | "ALLOW" | "NEEDS_HUMAN_ATTENTION"), "findings" (array), optional "notes" (string). No other keys.
+- Each finding has exactly these keys: "file" (a path from the provided files), "line_range" ({"start": integer, "end": integer}, 1-based line numbers in that file, start <= end), "problem_category" ("unnecessary_under_invariant"), "reason" (10 to 1000 characters naming the invariant and where it is visible), "confidence" (number from 0 to 1), optional "suggested_fix" (string). No other keys.
 - If verdict is "FLAG", findings must NOT be empty. If verdict is "ALLOW" or "NEEDS_HUMAN_ATTENTION", findings MUST be empty [].
 - Output ONLY the JSON object, optionally wrapped in a single \`\`\`json fenced block.`;
 

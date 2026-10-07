@@ -1,4 +1,7 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   buildUserPrompt,
   JUDGE_SCHEMA_VERSION,
@@ -21,15 +24,19 @@ const DEFAULT_TIMEOUT_MS = 25000;
 const DEFAULT_MAX_TOKENS = 2000;
 const DEFAULT_INPUT_TOKEN_CEILING = 12000;
 
-function getCommit(): string | null {
+// The anti-slop checkout's own commit, not the caller's repository; null for installs without git metadata.
+function resolveEngineCommit(): string | null {
   try {
-    const commit = execSync("git rev-parse HEAD", { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    const [topLevel = "", commit = ""] = execFileSync("git", ["-C", dirname(fileURLToPath(import.meta.url)), "rev-parse", "--show-toplevel", "HEAD"], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim().split("\n");
+    const packageJson: unknown = JSON.parse(readFileSync(join(topLevel, "package.json"), "utf-8"));
 
-    return commit.length > 0 ? commit : null;
+    return typeof packageJson === "object" && packageJson !== null && "name" in packageJson && packageJson.name === "anti-slop" && commit.length > 0 ? commit : null;
   } catch {
     return null;
   }
 }
+
+const ENGINE_COMMIT = resolveEngineCommit();
 
 export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): Promise<JudgeResult> {
   const startTime = performance.now();
@@ -49,7 +56,7 @@ export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): P
     schemaVersion: JUDGE_SCHEMA_VERSION,
     schemaSha256: SCHEMA_SHA256,
     params: { temperature: 0, maxTokens, timeoutMs, inputTokenCeiling },
-    engineCommit: getCommit(),
+    engineCommit: ENGINE_COMMIT,
     timestamp,
     redactions: 0,
     droppedFiles,
