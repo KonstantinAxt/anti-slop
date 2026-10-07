@@ -230,7 +230,7 @@ Configured via `release-please-config.json`:
 
 Local commit messages are checked with `commitlint` and `lefthook`:
 - Config: `commitlint.config.mjs` and `lefthook.yml`.
-- To install Git hooks locally: `bunx lefthook install`.
+- To install Git hooks locally: `pnpm exec lefthook install`.
 
 ## 7. Distribution & Installation
 
@@ -266,7 +266,7 @@ To enforce this architecture on GitHub:
 1. **Pull Requests**:
    - Settings -> General -> Pull Requests -> Allow squash merging.
    - Default squash commit message: **"Pull request title"**.
-2. **Branch Ruleset on `main` (`protect-main`, id `23537020`)**:
+2. **Branch Ruleset on `main` (`protect-main`)**:
    - On private personal repositories, GitHub legacy branch protection returns HTTP 403/404, but GitHub Rulesets (`/repos/:owner/:repo/rulesets`) are fully supported.
    - **Conditions**: Target branch `~DEFAULT_BRANCH` (`main`).
    - **Rules**:

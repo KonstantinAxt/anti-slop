@@ -3,9 +3,9 @@
 The **CRAP (Change Risk Anti-Pattern)** metric evaluates how risky a function or method is to modify.
 It combines **Cyclomatic Complexity (CC)** with **automated test coverage** into a single risk score.
 
-anti-slop provides automated CRAP analysis via `bun run test:crap` or the `--crap` flag:
+anti-slop provides automated CRAP analysis via `pnpm run test:crap` or the `--crap` flag:
 ```bash
-bun run test:crap src/checks/strict-ts.ts
+pnpm run test:crap src/checks/strict-ts.ts
 # or against PR changes:
 anti-slop --crap --since origin/main
 ```

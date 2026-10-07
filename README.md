@@ -134,7 +134,7 @@ Issue numbers (such as #55 or #87) and commit hashes in the docs, test names and
 `anti-slop` maintains a strict separation between the rules it executes and the tests that verify those rules:
 
 - **`src/checks/` (The Production Engine)**: The actual static analysis code executed when a developer runs `anti-slop`. Each check parses target code into a TypeScript AST, analyzes import/export graphs, or inspects statements, producing diagnostic warnings and errors.
-- **`tests/` (Quality Assurance for the Engine)**: Automated suites executed when a tool developer runs `bun test`. These tests feed known valid and invalid code snippets to `src/checks/` to ensure rules trigger on real defects and never produce false positives on clean code.
+- **`tests/` (Quality Assurance for the Engine)**: Automated suites executed when a tool developer runs `pnpm test`. These tests feed known valid and invalid code snippets to `src/checks/` to ensure rules trigger on real defects and never produce false positives on clean code.
 
 ```
                     ┌────────────────────────┐

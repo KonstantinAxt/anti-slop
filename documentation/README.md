@@ -36,10 +36,10 @@ Learn how `anti-slop` enforces Fractal Architecture Framework (FAF) and Domain-F
 - **Further Readings**: FAF, DFRA, and Robert C. Martin's component coupling principles.
 
 ### 4. [CI/CD Process & Architecture (`ci-cd.md`)](./ci-cd.md)
-Learn how `anti-slop` implements continuous integration and hygiene pipelines on GitHub Actions using the native Bun runtime.
+Learn how `anti-slop` implements continuous integration and hygiene pipelines on GitHub Actions with pnpm and Node.js.
 
-- **Architecture Overview**: Fast-fail static validation (`typecheck`) paired with deep test suites (`bun test`).
-- **Nightly Hygiene**: Scheduled CRAP metric audits and dataset integrity verification.
+- **Architecture Overview**: Fast-fail static validation (`typecheck`) paired with deep test suites (`pnpm test`).
+- **Nightly Hygiene**: Scheduled CRAP metric audits.
 - **Local vs. CI Mapping**: Parity commands for developers prior to PR submission.
 
 ### 5. [GitHub Governance & Idea Intake (`github-governance-and-intake.md`)](./github-governance-and-intake.md)
