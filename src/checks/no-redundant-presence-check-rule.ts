@@ -7,7 +7,7 @@ const THROWING_CALLEE_PATTERN = /^(fail|panic|throw|assert|bail|unreachable|erro
 const MIN_MAP_TYPE_ARGUMENTS = 2;
 const MAP_VALUE_TYPE_INDEX = 1;
 
-type ReportFn = (hasCall: ESTreeNode, receiver: ESTreeNode, key: ESTreeNode) => void;
+type ReportFn = (hasCall: ESTreeNode, messageId: "unreachableGuard" | "doubleLookup", receiver: ESTreeNode, key: ESTreeNode) => void;
 
 function isAstNode(value: unknown): value is ESTreeNode {
   return typeof value === "object" && value !== null && "type" in value;
@@ -331,24 +331,27 @@ export const noRedundantPresenceCheckRule: Rule.RuleModule = {
   meta: {
     type: "problem",
     hasSuggestions: true,
-    docs: { description: "Flags redundant Map#has presence checks before Map#get calls with unreachable guards." },
+    docs: { description: "Flags redundant Map#has presence checks before Map#get calls with redundant lookups or unreachable guards." },
     schema: [],
     messages: {
       unreachableGuard: "Redundant presence check: '{{receiver}}' was checked with 'has({{key}})' before 'get({{key}})' with an unreachable guard. Look up the key once and narrow the result.",
+      doubleLookup: "Redundant presence check: '{{receiver}}' was checked with 'has({{key}})' before 'get({{key}})'. Look up the key once with 'get({{key}})'.",
       suggestNarrow: "Look up the key once with get() and narrow on the result.",
     },
   },
   create(context: Rule.RuleContext) {
-    const report: ReportFn = (hasCall, receiver, key) => {
+    const report: ReportFn = (hasCall, messageId, receiver, key) => {
       const loc = hasCall.loc ?? { start: { line: 1, column: 0 }, end: { line: 1, column: 0 } };
       const rangeStart = hasCall.range?.[0] ?? 0;
       context.report({
         loc,
-        messageId: "unreachableGuard",
+        messageId,
         data: { receiver: getReceiverName(receiver), key: getKeyName(key) },
         suggest: [{
           messageId: "suggestNarrow",
-          fix(fixer) { return fixer.insertTextBeforeRange([rangeStart, rangeStart], "/* suggestion: look up key once with .get() */ "); },
+          fix(fixer) {
+            return fixer.insertTextBeforeRange([rangeStart, rangeStart], "/* suggestion: look up key once with .get() */ ");
+          },
         }],
       });
     };
@@ -363,13 +366,11 @@ export const noRedundantPresenceCheckRule: Rule.RuleModule = {
           continue;
         }
         if (isWrappedInAssertionOrCast(getCall)) return false;
-        if (isStatementUnreachableGuard(stmt, getCall, stmts[i + 1])) {
-          report(hasCall, receiver, key);
+        const isUnreachable = isStatementUnreachableGuard(stmt, getCall, stmts[i + 1]);
+        report(hasCall, isUnreachable ? "unreachableGuard" : "doubleLookup", receiver, key);
 
-          return true;
-        }
+        return true;
 
-        return false;
       }
 
       return false;
@@ -378,9 +379,28 @@ export const noRedundantPresenceCheckRule: Rule.RuleModule = {
     function checkIfStatement(node: ESTree.IfStatement): void {
       const parts = getValidMapReceiver(node.test, context);
       if (!parts) return;
-      if (node.consequent.type === "BlockStatement") {
-        checkStatementsSequence(node.consequent.body, 0, node.test, parts.receiver, parts.key);
+      if (node.consequent.type !== "BlockStatement") {
+        const getCall = findGetCallInNode(node.consequent, parts.receiver, parts.key);
+        if (getCall && !isWrappedInAssertionOrCast(getCall)) {
+          report(node.test, "doubleLookup", parts.receiver, parts.key);
+        }
+
+        return;
       }
+
+      checkStatementsSequence(node.consequent.body, 0, node.test, parts.receiver, parts.key);
+    }
+
+    function checkTernary(node: ESTree.ConditionalExpression): void {
+      const parts = getValidMapReceiver(node.test, context);
+      if (!parts) return;
+      const { receiver, key } = parts;
+      const getCall = findGetCallInNode(node.consequent, receiver, key);
+      if (!getCall || isWrappedInAssertionOrCast(getCall) || containsCallOrMutation(node.consequent, receiver, key, getCall)) {
+        return;
+      }
+
+      report(node.test, "doubleLookup", receiver, key);
     }
 
     function checkStatementsForEarlyReturn(stmts: (ESTree.Statement | ESTree.ModuleDeclaration | ESTree.Directive)[]): void {
@@ -396,6 +416,7 @@ export const noRedundantPresenceCheckRule: Rule.RuleModule = {
     }
 
     return {
+      ConditionalExpression: checkTernary,
       IfStatement: checkIfStatement,
       BlockStatement(node) { checkStatementsForEarlyReturn(node.body); },
       Program(node) { checkStatementsForEarlyReturn(node.body); },

@@ -13,6 +13,15 @@ async function expectViolation(code: string): Promise<void> {
   expect(ruleFindings[0]?.suggestion).toContain(".get()");
 }
 
+async function expectDoubleLookup(code: string): Promise<void> {
+  const findings = await checkWithEslint("src/service.ts", code);
+  const ruleFindings = findings.filter((finding) => finding.rule === RULE_NAME);
+
+  expect(ruleFindings).toHaveLength(1);
+  expect(ruleFindings[0]?.message).toContain("before 'get(");
+  expect(ruleFindings[0]?.message).not.toContain("unreachable guard");
+}
+
 async function expectClean(code: string): Promise<void> {
   const findings = await checkWithEslint("src/service.ts", code);
   const ruleFindings = findings.filter((finding) => finding.rule === RULE_NAME);
@@ -20,7 +29,7 @@ async function expectClean(code: string): Promise<void> {
   expect(ruleFindings).toHaveLength(0);
 }
 
-describe("slop/no-redundant-presence-check (unreachableGuard)", () => {
+describe("slop/no-redundant-presence-check", () => {
   it.each([
     ["in-block guard", "const m = new Map<string, number>(); export function f(k: string) { if (m.has(k)) { const v = m.get(k); if (v === undefined) throw new Error(); return v; } return 0; }"],
     ["negated ?? fail", "const m = new Map<string, number>(); function fail(s: string): never { throw new Error(s); } export function f(k: string) { if (!m.has(k)) return 0; return m.get(k) ?? fail('err'); }"],
@@ -28,8 +37,18 @@ describe("slop/no-redundant-presence-check (unreachableGuard)", () => {
     ["inverted undefined", "const m = new Map<string, number>(); export function f(k: string) { if (m.has(k)) { const v = m.get(k); if (undefined === v) throw new Error(); return v; } return 0; }"],
     ["null check", "const m = new Map<string, number>(); export function f(k: string) { if (m.has(k)) { const v = m.get(k); if (v == null) throw new Error(); return v; } return 0; }"],
     ["this.store in class", "export class S { private store = new Map<string, number>(); verify(k: string): number { if (this.store.has(k)) { const v = this.store.get(k); if (v === undefined) throw new Error(); return v; } return 0; } }"],
-  ])("flags %s", async (_, code) => {
+  ])("flags unreachableGuard on %s", async (_, code) => {
     await expectViolation(code);
+  });
+
+  it.each([
+    ["ternary", "const m = new Map<string, number>(); export function f(k: string) { return m.has(k) ? m.get(k) : 0; }"],
+    ["if statement", "const m = new Map<string, number>(); export function f(k: string) { if (m.has(k)) return m.get(k); return 0; }"],
+    ["if block", "const m = new Map<string, number>(); export function f(k: string) { if (m.has(k)) { const v = m.get(k); return v; } return 0; }"],
+    ["negated early return", "const m = new Map<string, number>(); export function f(k: string) { if (!m.has(k)) return 0; return m.get(k); }"],
+    ["this.store in class", "export class S { private store = new Map<string, number>(); lookup(k: string): number { if (this.store.has(k)) return this.store.get(k) ?? 0; return 0; } }"],
+  ])("flags doubleLookup on %s", async (_, code) => {
+    await expectDoubleLookup(code);
   });
 
   it.each([
