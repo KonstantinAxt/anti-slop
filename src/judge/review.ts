@@ -11,6 +11,7 @@ import {
   USER_TEMPLATE_SHA256,
 } from "./prompt.js";
 import { JudgeProviderError } from "./provider.js";
+import { redactJudgeInput } from "./redaction.js";
 import type {
   JudgeAbstainReason,
   JudgeInput,
@@ -45,8 +46,9 @@ export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): P
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxTokens = opts.maxTokens ?? DEFAULT_MAX_TOKENS;
   const inputTokenCeiling = opts.inputTokenCeiling ?? DEFAULT_INPUT_TOKEN_CEILING;
-  const userPrompt = buildUserPrompt(input.diff, input.files);
-  const droppedFiles: string[] = [];
+
+  const redacted = redactJudgeInput(input);
+  const userPrompt = buildUserPrompt(redacted.diff, redacted.files);
 
   const base = {
     provider: opts.provider.name,
@@ -59,8 +61,8 @@ export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): P
     params: { temperature: 0, maxTokens, timeoutMs, inputTokenCeiling },
     engineCommit: ENGINE_COMMIT,
     timestamp,
-    redactions: 0,
-    droppedFiles,
+    redactions: redacted.redactions,
+    droppedFiles: redacted.droppedFiles,
   };
 
   const estimatedTokens = Math.ceil(userPrompt.length / CHARS_PER_TOKEN);
@@ -90,7 +92,7 @@ export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): P
 
   const latencyMs = Math.round(performance.now() - startTime);
   const provenance: JudgeProvenance = { ...base, latencyMs, ...(completion.usage != null ? { usage: completion.usage } : {}) };
-  const validation = validateJudgeOutput(completion.text, input.files);
+  const validation = validateJudgeOutput(completion.text, redacted.files);
 
   if (!validation.ok) {
     return { disposition: "ABSTAIN", abstainReason: "MALFORMED_OUTPUT", findings: [], provenance };
