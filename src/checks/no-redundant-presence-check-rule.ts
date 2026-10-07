@@ -61,7 +61,14 @@ function getReceiverName(node: ESTreeNode): string {
 }
 
 function getKeyName(node: ESTreeNode): string {
-  return node.type === "Identifier" ? node.name : node.type === "Literal" ? String(node.value) : "key";
+  if (node.type === "Identifier") {
+    return node.name;
+  }
+  if (node.type === "Literal") {
+    return String(node.value);
+  }
+
+  return "key";
 }
 
 function isWrappedInAssertionOrCast(node: ESTreeNode): boolean {

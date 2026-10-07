@@ -27,6 +27,7 @@ describe("slop/no-redundant-presence-check (unreachableGuard)", () => {
     ["negated if-undefined", "const m = new Map<string, number>(); export function f(k: string) { if (!m.has(k)) return 0; const v = m.get(k); if (v === undefined) throw new Error(); return v; }"],
     ["inverted undefined", "const m = new Map<string, number>(); export function f(k: string) { if (m.has(k)) { const v = m.get(k); if (undefined === v) throw new Error(); return v; } return 0; }"],
     ["null check", "const m = new Map<string, number>(); export function f(k: string) { if (m.has(k)) { const v = m.get(k); if (v == null) throw new Error(); return v; } return 0; }"],
+    ["this.store in class", "export class S { private store = new Map<string, number>(); verify(k: string): number { if (this.store.has(k)) { const v = this.store.get(k); if (v === undefined) throw new Error(); return v; } return 0; } }"],
   ])("flags %s", async (_, code) => {
     await expectViolation(code);
   });
