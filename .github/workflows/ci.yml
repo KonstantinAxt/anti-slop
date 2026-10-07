@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  merge_group:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'merge_group' && github.event.merge_group.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
+
+jobs:
+  gates:
+    name: Gates
+    uses: ./.github/workflows/_gates.yml
+    with:
+      run_heavy_gates: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+      since_ref: ${{ github.event_name == 'merge_group' && format('origin/{0}', github.event.merge_group.base_ref || 'main') || (github.base_ref != '' && format('origin/{0}', github.base_ref) || 'HEAD~1') }}
+      head_ref: ${{ github.event_name == 'merge_group' && github.event.merge_group.head_ref || github.head_ref || github.ref_name }}
+      base_ref: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_ref || github.base_ref || 'main' }}
+
+  auto-merge:
+    name: Auto-merge
+    needs: [gates]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    if: |
+      always() &&
+      github.event_name == 'pull_request' &&
+      needs.gates.result == 'success' &&
+      (
+        startsWith(github.head_ref, 'release-please--') ||
+        startsWith(github.head_ref, 'renovate/') ||
+        contains(github.event.pull_request.labels.*.name, 'autorelease: pending') ||
+        contains(github.event.pull_request.labels.*.name, 'automerge')
+      )
+    steps:
+      - name: Auto-merge automated PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" \
+            --squash \
+            --delete-branch

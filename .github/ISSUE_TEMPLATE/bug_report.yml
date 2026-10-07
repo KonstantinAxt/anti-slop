@@ -1,0 +1,68 @@
+name: 🐛 Bug Report / False Positive
+description: Report a false positive, false negative, crash, or unexpected behavior in anti-slop.
+title: "fix([scope]): <short-description>"
+labels: ["kind/bug", "status/triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### Filing a bug report or false positive
+        If reporting a **false positive** (anti-slop flagged valid code), please provide the minimal code snippet and the exact rule triggered.
+
+  - type: dropdown
+    id: bug-type
+    attributes:
+      label: Bug Type
+      options:
+        - "False Positive (valid code was incorrectly flagged)"
+        - "False Negative (known defect/slop was missed)"
+        - "CLI Crash / Unhandled Exception"
+        - "Configuration or Integration Issue"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description of the Bug
+      description: A clear and concise description of what happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal Reproduction Code / Steps
+      description: Provide minimal TypeScript/JavaScript code or steps to reproduce the issue.
+      render: typescript
+      placeholder: |
+        // Minimal code snippet triggering the false positive:
+    validations:
+      required: true
+
+  - type: input
+    id: anti-slop-version
+    attributes:
+      label: anti-slop Version
+      description: Run `anti-slop --version` or provide commit SHA.
+      placeholder: "e.g. 0.1.0 or commit d230166"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Bun version, TypeScript version, Node/pnpm if applicable.
+      placeholder: "macOS Sonoma / Bun 1.3.14 / TypeScript 5.9.3"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Log Output
+      description: Please copy and paste any relevant terminal output or JSON report.
+      render: shell
+    validations:
+      required: false

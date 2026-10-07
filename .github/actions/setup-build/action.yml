@@ -1,0 +1,40 @@
+name: "Setup and Build"
+description: "Setup pnpm and Node.js with dependency caching, install dependencies, and build CLI artifact"
+
+inputs:
+  node-version:
+    description: "Node.js version to setup (defaults to .nvmrc)"
+    required: false
+    default: "24.21.0"
+  pnpm-version:
+    description: "pnpm version to setup"
+    required: false
+    default: "10.34.5"
+  build:
+    description: "Whether to execute pnpm run build after install"
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: ${{ inputs.pnpm-version }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        node-version-file: ".nvmrc"
+        cache: "pnpm"
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - name: Build CLI artifact
+      if: ${{ inputs.build == 'true' }}
+      shell: bash
+      run: pnpm run build

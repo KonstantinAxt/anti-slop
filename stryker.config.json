@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "vitest",
+  "plugins": [
+    "@stryker-mutator/vitest-runner"
+  ],
+  "vitest": {
+    "configFile": "vitest.config.ts"
+  },
+  "coverageAnalysis": "perTest",
+  "ignoreStatic": true,
+  "reporters": [],
+  "incremental": true,
+  "incrementalFile": "reports/mutation/stryker-incremental.json",
+  "timeoutMS": 10000,
+  "dryRunTimeoutMinutes": 2,
+  "disableTypeChecks": "{src,lib,test,tests}/**/*.{js,ts,jsx,tsx}",
+  "ignorePatterns": [
+    ".claude/**",
+    "spad/**",
+    ".spad/**",
+    "dist/**",
+    "build/**",
+    "coverage/**",
+    "reports/**",
+    "documentation/**",
+    ".github/**",
+    ".git/**",
+    "tmp/**",
+    ".tmp/**",
+    "node_modules/.cache/**"
+  ]
+}

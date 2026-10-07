@@ -1,0 +1,12 @@
+diff --git a/dist/chunks/rpc.-pEldfrD.js b/dist/chunks/rpc.-pEldfrD.js
+index a48eb0174a4fbc508a36c46ff78b0f9bf7ba6295..73baa7eb02a177614edf383e3ec9643dd6ebed14 100644
+--- a/dist/chunks/rpc.-pEldfrD.js
++++ b/dist/chunks/rpc.-pEldfrD.js
+@@ -46,6 +46,7 @@ function createRuntimeRpc(options) {
+ 			"onCancel"
+ 		],
+ 		onTimeoutError(functionName, args) {
++			if (functionName === "onTaskUpdate") return true;
+ 			let message = `[vitest-worker]: Timeout calling "${functionName}"`;
+ 			if (functionName === "fetch" || functionName === "transform" || functionName === "resolveId") message += ` with "${JSON.stringify(args)}"`;
+ 			// JSON.stringify cannot serialize Error instances

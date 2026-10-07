@@ -1,0 +1,409 @@
+name: Gates
+
+on:
+  workflow_call:
+    inputs:
+      run_heavy_gates:
+        description: "Run mutation testing and CRAP analysis (heavy gates)"
+        required: false
+        type: boolean
+        default: false
+      since_ref:
+        description: "Git ref for diff-scoped checks"
+        required: false
+        type: string
+        default: "origin/main"
+      head_ref:
+        description: "Head branch ref for incremental caching"
+        required: false
+        type: string
+        default: ""
+      base_ref:
+        description: "Base branch ref for incremental caching"
+        required: false
+        type: string
+        default: "main"
+jobs:
+  changes:
+    name: Detect File Changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+      actions: read
+    outputs:
+      code: ${{ steps.restore-tree-cache.outputs.cache-hit != 'true' && (github.event_name != 'pull_request' || steps.filter.outputs.code == 'true') }}
+      core: ${{ github.event_name != 'pull_request' || steps.filter.outputs.core == 'true' }}
+      docs: ${{ steps.filter.outputs.docs }}
+      tree_sha: ${{ steps.tree.outputs.sha }}
+      tree_verified: ${{ steps.restore-tree-cache.outputs.cache-hit == 'true' }}
+      release_pr: ${{ steps.release-pr.outputs.eligible == 'true' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Compute Git Tree SHA
+        id: tree
+        run: |
+          TREE_SHA=$(git rev-parse HEAD^{tree})
+          echo "sha=$TREE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Git Tree SHA: $TREE_SHA"
+      - name: Check if tree was already verified in PR CI
+        id: restore-tree-cache
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TREE_SHA="${{ steps.tree.outputs.sha }}"
+          CACHE_COUNT=$(gh api "/repos/${{ github.repository }}/actions/caches?key=ci-tree-verified-${TREE_SHA}" --jq '.total_count' 2>/dev/null || echo "0")
+          if [ "$CACHE_COUNT" -gt 0 ]; then
+            echo "cache-hit=true" >> "$GITHUB_OUTPUT"
+            echo "✔ Git tree $TREE_SHA was verified in PR CI ($CACHE_COUNT cache entry found)."
+          else
+            echo "cache-hit=false" >> "$GITHUB_OUTPUT"
+            echo "ℹ Git tree $TREE_SHA was not verified in PR CI."
+          fi
+      - name: Identify metadata-only Release Please PR
+        id: release-pr
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--')
+        run: |
+          set -euo pipefail
+          EXPECTED_FILES=$'.release-please-manifest.json\nCHANGELOG.md\npackage.json'
+          if [ "$(git diff --no-renames --name-only HEAD^1 HEAD)" != "$EXPECTED_FILES" ]; then
+            echo "Release PR contains other changes; running full gates."
+            exit 0
+          fi
+
+          TEMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "$TEMP_DIR"' EXIT
+          git show HEAD^1:package.json > "$TEMP_DIR/base-package.json"
+          git show HEAD:package.json > "$TEMP_DIR/head-package.json"
+          git show HEAD^1:.release-please-manifest.json > "$TEMP_DIR/base-manifest.json"
+          git show HEAD:.release-please-manifest.json > "$TEMP_DIR/head-manifest.json"
+
+          if ! jq -e -s '((.[0] | del(.version)) == (.[1] | del(.version))) and (.[0].version != .[1].version) and (.[1].version | type == "string") and (.[1].version != "")' "$TEMP_DIR/base-package.json" "$TEMP_DIR/head-package.json" > /dev/null; then
+            echo "Package changes exceed a version bump; running full gates."
+            exit 0
+          fi
+          if ! jq -e -s '((.[0] | del(.["."])) == (.[1] | del(.["."]))) and (.[0]["."] != .[1]["."]) and (.[1]["."] | type == "string") and (.[1]["."] != "")' "$TEMP_DIR/base-manifest.json" "$TEMP_DIR/head-manifest.json" > /dev/null; then
+            echo "Manifest changes exceed a version bump; running full gates."
+            exit 0
+          fi
+          if [ "$(jq -r '.version' "$TEMP_DIR/head-package.json")" != "$(jq -r '.["."]' "$TEMP_DIR/head-manifest.json")" ]; then
+            echo "Package and manifest versions differ; running full gates."
+            exit 0
+          fi
+
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+          echo "Metadata-only Release Please PR; running packaging sanity gates."
+      - name: Filter changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            code:
+              - 'src/**'
+              - 'bin/**'
+              - 'tests/**'
+              - 'e2e-fixtures/**'
+              - 'scripts/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig*.json'
+              - 'vitest*.config.ts'
+              - '.github/workflows/**'
+              - '.github/actions/**'
+            core:
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig*.json'
+              - 'vitest*.config.ts'
+              - 'src/types.ts'
+              - 'src/index.ts'
+              - '.github/workflows/**'
+            docs:
+              - '**.md'
+              - 'documentation/**'
+              - '.github/ISSUE_TEMPLATE/**'
+
+  typecheck:
+    name: Typecheck
+    needs: [changes]
+    if: needs.changes.outputs.tree_verified != 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup and build
+        uses: ./.github/actions/setup-build
+        with:
+          build: "false"
+      - name: Run TypeScript typecheck
+        run: pnpm exec tsc --noEmit
+
+  unit-test:
+    name: Unit Tests & Coverage
+    needs: [changes]
+    if: needs.changes.outputs.release_pr != 'true' && needs.changes.outputs.tree_verified != 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup and build
+        uses: ./.github/actions/setup-build
+        with:
+          build: "false"
+      - name: Run unit test suite and generate coverage
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ needs.changes.outputs.core }}" != "true" ]; then
+            SINCE_REF="${{ inputs.since_ref }}"
+            if [ -z "$SINCE_REF" ]; then
+              SINCE_REF="origin/main"
+            fi
+            echo "Running selective tests for PR against $SINCE_REF..."
+            pnpm run test:coverage --changed "$SINCE_REF" --passWithNoTests
+          else
+            echo "Running full unit test suite..."
+            pnpm run test:coverage
+          fi
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-coverage
+          path: reports/coverage/lcov.info
+          if-no-files-found: ignore
+          retention-days: 1
+
+  e2e-test:
+    name: End-to-End Tests
+    needs: [changes]
+    if: needs.changes.outputs.release_pr != 'true' && needs.changes.outputs.tree_verified != 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup and build
+        uses: ./.github/actions/setup-build
+      - name: Run E2E test suite
+        run: pnpm run test:e2e
+
+  self-gate:
+    name: Anti-Slop Self Gate
+    needs: [changes]
+    if: needs.changes.outputs.release_pr != 'true' && needs.changes.outputs.tree_verified != 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup and build
+        uses: ./.github/actions/setup-build
+      - name: Run anti-slop review gate
+        run: node bin/anti-slop
+
+  pr-size:
+    name: PR Size Gate
+    needs: [changes]
+    if: needs.changes.outputs.tree_verified != 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup and build
+        uses: ./.github/actions/setup-build
+
+      - name: Verify PR size
+        run: node bin/anti-slop --since ${{ inputs.since_ref }} --checks pr-size
+
+      - name: Verify bundle size budget
+        run: pnpm run check:size
+
+  installer-gate:
+    name: Installer (${{ matrix.os }})
+    needs: [changes]
+    if: needs.changes.outputs.tree_verified != 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Setup pnpm/Node and build dist/cli.js so test:installer can package it into the mock release tarball
+      - name: Setup and build
+        uses: ./.github/actions/setup-build
+
+      - name: Run installer test harness
+        run: pnpm run test:installer
+
+
+  crap-gate:
+    name: CRAP Metric Analysis
+    if: inputs.run_heavy_gates && needs.changes.outputs.release_pr != 'true' && needs.changes.outputs.tree_verified != 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true')
+    needs: [changes, unit-test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup and build
+        uses: ./.github/actions/setup-build
+
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: test-coverage
+          path: reports/coverage
+
+      - name: Run CRAP metric analysis
+        run: node bin/anti-slop --since ${{ inputs.since_ref }} --checks crap
+
+  mutation-gate:
+    name: Mutation Testing
+    # Temporarily disabled in PR CI due to cold run timeouts on 2-vCPU runners (see issue #4)
+    if: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANTI_SLOP_MUTATION_CONCURRENCY: "2"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup and build
+        uses: ./.github/actions/setup-build
+
+      - name: Cache Stryker incremental results
+        uses: actions/cache@v4
+        with:
+          path: reports/mutation/stryker-incremental.json
+          key: ${{ runner.os }}-stryker-incremental-${{ inputs.head_ref || (github.event_name == 'merge_group' && github.event.merge_group.head_ref) || github.head_ref || github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-stryker-incremental-${{ inputs.head_ref || (github.event_name == 'merge_group' && github.event.merge_group.head_ref) || github.head_ref || github.ref_name }}-
+            ${{ runner.os }}-stryker-incremental-${{ inputs.base_ref || (github.event_name == 'merge_group' && github.event.merge_group.base_ref) || github.base_ref || 'main' }}-
+            ${{ runner.os }}-stryker-incremental-main-
+            ${{ runner.os }}-stryker-incremental-
+      - name: Mutation preflight and capacity estimate
+        run: pnpm run test:mutation:preflight -- --since ${{ inputs.since_ref }} --ci --max-mutation-files 8
+
+      - name: Run diff-scoped mutation testing
+        run: node bin/anti-slop --since ${{ inputs.since_ref }} --checks mutation --min-mutation-score 80 --mutation-concurrency 2 --max-mutation-files 8
+
+      - name: Upload Stryker incremental report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stryker-incremental-report
+          path: reports/mutation/stryker-incremental.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  gates-pass:
+    name: Gates Pass
+    if: always()
+    needs: [changes, typecheck, unit-test, e2e-test, self-gate, pr-size, installer-gate, crap-gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify gate results
+        run: |
+          CODE_CHANGED="${{ needs.changes.outputs.code }}"
+          TREE_VERIFIED="${{ needs.changes.outputs.tree_verified }}"
+          RELEASE_PR="${{ needs.changes.outputs.release_pr }}"
+          echo "Changes job:   ${{ needs.changes.result }}"
+          echo "Code changed:  $CODE_CHANGED"
+          echo "Tree verified: $TREE_VERIFIED"
+          echo "Release PR:    $RELEASE_PR"
+          echo "Typecheck:     ${{ needs.typecheck.result }}"
+          echo "Unit-test:     ${{ needs.unit-test.result }}"
+          echo "E2E-test:      ${{ needs.e2e-test.result }}"
+          echo "Self-gate:     ${{ needs.self-gate.result }}"
+          echo "PR-size:       ${{ needs.pr-size.result }}"
+          echo "Installer-gate:${{ needs.installer-gate.result }}"
+          echo "CRAP-gate:     ${{ needs.crap-gate.result }}"
+
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "Error: Changes detection job failed with status: ${{ needs.changes.result }}"
+            exit 1
+          fi
+
+          if [ "$TREE_VERIFIED" = "true" ]; then
+            echo "✔ Git tree ${{ needs.changes.outputs.tree_sha }} was already verified in PR CI; skipping redundant test execution on main."
+          fi
+
+          # Packaging sanity gates must succeed even on a fast-tracked release PR.
+          for res in "${{ needs.typecheck.result }}" "${{ needs.pr-size.result }}" "${{ needs.installer-gate.result }}"; do
+            if [ "$res" = "success" ] || { [ "$res" = "skipped" ] && { [ "$CODE_CHANGED" != "true" ] || [ "$TREE_VERIFIED" = "true" ]; }; }; then
+              continue
+            fi
+            echo "Error: Packaging check failed or was unexpectedly skipped with status: $res"
+            exit 1
+          done
+
+          for res in "${{ needs.unit-test.result }}" "${{ needs.e2e-test.result }}" "${{ needs.self-gate.result }}"; do
+            if [ "$RELEASE_PR" = "true" ] && [ "$res" = "skipped" ]; then
+              continue
+            fi
+            if [ "$res" = "success" ] || { [ "$res" = "skipped" ] && { [ "$CODE_CHANGED" != "true" ] || [ "$TREE_VERIFIED" = "true" ]; }; }; then
+              continue
+            fi
+            echo "Error: Core check failed or was unexpectedly skipped with status: $res"
+            exit 1
+          done
+
+          # A fast-tracked PR may skip CRAP, but must not hide a failed run.
+          if [ "$RELEASE_PR" = "true" ] && [ "${{ needs.crap-gate.result }}" != "skipped" ]; then
+            echo "Error: CRAP gate unexpectedly ran or failed on a release PR: ${{ needs.crap-gate.result }}"
+            exit 1
+          fi
+          if [ "${{ inputs.run_heavy_gates }}" = "true" ] && [ "$RELEASE_PR" != "true" ] && [ "$CODE_CHANGED" = "true" ] && [ "$TREE_VERIFIED" != "true" ]; then
+            if [ "${{ needs.crap-gate.result }}" != "success" ]; then
+              echo "Error: CRAP gate failed with status: ${{ needs.crap-gate.result }}"
+              exit 1
+            fi
+          fi
+
+          echo "✔ All required gates passed."
+
+      - name: Create tree verification marker
+        if: (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.changes.outputs.code == 'true' && needs.changes.outputs.release_pr != 'true'
+        run: |
+          mkdir -p .ci-tree-verified
+          echo "verified at $(date -u) for commit ${{ github.sha }} (tree ${{ needs.changes.outputs.tree_sha }})" > .ci-tree-verified/marker.txt
+
+      - name: Save verified Git tree cache
+        if: (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.changes.outputs.code == 'true' && needs.changes.outputs.release_pr != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .ci-tree-verified
+          key: ci-tree-verified-${{ needs.changes.outputs.tree_sha }}

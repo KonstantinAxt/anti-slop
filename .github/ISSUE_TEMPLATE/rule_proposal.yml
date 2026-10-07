@@ -1,0 +1,84 @@
+name: 🎯 New Rule / Detector Proposal
+description: Propose a new defect detection, AST guard, or anti-slop rule.
+title: "rule([category]): <concise-rule-name>"
+labels: ["kind/rule-proposal", "status/triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### Thanks for proposing a new rule for `anti-slop`!
+        `anti-slop` catches objective code defects, AI-generated slop, hollow tests, and architecture traps before code review.
+        Please provide clear code examples of what should fail and what should pass.
+
+  - type: input
+    id: rule-name
+    attributes:
+      label: Rule Name
+      description: Proposed kebab-case rule identifier (e.g. `defect/no-orphaned-mocks` or `slop/no-tautological-assertions`).
+      placeholder: category/rule-name
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Rule Category
+      description: What quality domain does this rule guard?
+      options:
+        - "Defect / Correctness (subtle runtime bugs, async traps, type escapes)"
+        - "Slop / LLM Hallucination (tautological asserts, fake mocks, hollow tests)"
+        - "Architecture / Complexity (CRAP metric, fractal architecture, coupling)"
+        - "Strict TypeScript (type boundaries, implicit any, loose assertions)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem & Motivation
+      description: What specific bad pattern or defect does this rule prevent? Why is it considered slop or a defect?
+      placeholder: "LLM code generators frequently write tests that assert an object against itself or leave mock setup disconnected from the call..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: invalid-code
+    attributes:
+      label: Invalid Code Examples (Should FAIL)
+      description: Concrete code snippets that anti-slop should detect and flag.
+      render: typescript
+      placeholder: |
+        // Example that anti-slop should reject:
+        expect(result.status).toBe(result.status);
+    validations:
+      required: true
+
+  - type: textarea
+    id: valid-code
+    attributes:
+      label: Valid Code Examples (Should PASS)
+      description: Legitimate code snippets that look similar but MUST NOT trigger a false positive.
+      render: typescript
+      placeholder: |
+        // Legitimate pattern that must pass:
+        expect(result.status).toBe(200);
+    validations:
+      required: true
+
+  - type: dropdown
+    id: autofix
+    attributes:
+      label: Auto-Fix Potential
+      options:
+        - "Cannot be safely auto-fixed (requires human/LLM engineering judgment)"
+        - "Safe deterministic AST auto-fix possible"
+    validations:
+      required: true
+
+  - type: textarea
+    id: prior-art
+    attributes:
+      label: Prior Art / References
+      description: Links to related discussions, similar linters, or real-world incident post-mortems.
+    validations:
+      required: false

@@ -1,0 +1,58 @@
+name: 🚀 Feature / Improvement Request
+description: Propose a new CLI capability, reporter, runner integration, or engine improvement.
+title: "feat([scope]): <short-description>"
+labels: ["kind/feature", "status/triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### Proposing a new feature or improvement
+        Before submitting an issue, please check whether your concept has already been discussed in [GitHub Discussions](https://github.com/KonstantinAxt/anti-slop/discussions).
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope / Component
+      description: Which part of anti-slop does this feature belong to?
+      options:
+        - "CLI / DX (flags, arguments, incremental caching, exit codes)"
+        - "Reporters (JSON schema, LLM prompt generation, terminal output)"
+        - "CRAP Metric / Coverage (Jest, Vitest, Bun native coverage)"
+        - "Mutation Testing (Stryker runner, mutant selection)"
+        - "CI/CD & GitHub Actions (review bot, PR annotation, hygiene)"
+        - "Documentation / Examples"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: Is your feature request related to a problem or workflow limitation? Please describe clearly.
+      placeholder: "When running anti-slop in a monorepo with multiple package roots, ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the behavior, CLI flag, configuration option, or API you envision.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other approaches or workarounds did you consider?
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, or benchmark references here.
+    validations:
+      required: false

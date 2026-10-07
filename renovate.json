@@ -1,0 +1,49 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":separateMultipleMajorReleases"
+  ],
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "rangeStrategy": "pin",
+  "packageRules": [
+    {
+      "description": "Group all linters and styling packages together",
+      "matchPackagePatterns": [
+        "eslint",
+        "@stylistic",
+        "sonarjs"
+      ],
+      "groupName": "linters"
+    },
+    {
+      "description": "Group testing tools",
+      "matchPackagePatterns": [
+        "vitest",
+        "@stryker-mutator",
+        "c8",
+        "coverage"
+      ],
+      "groupName": "testing-frameworks"
+    },
+    {
+      "description": "Auto-merge minor and patch devDependencies if CI passes",
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "matchDepTypes": [
+        "devDependencies"
+      ],
+      "automerge": true
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "before 5am on monday"
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+# Lefthook Git hooks configuration
+# https://github.com/evilmartians/lefthook
+
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm exec commitlint --edit {1}

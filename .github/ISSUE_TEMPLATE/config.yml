@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💡 Ideas & Brainstorming
+    url: https://github.com/KonstantinAxt/anti-slop/discussions/new?category=ideas
+    about: Share raw ideas, brainstorm new concepts, or discuss directions before creating a formal issue.
+  - name: 💬 Q&A and Community Support
+    url: https://github.com/KonstantinAxt/anti-slop/discussions/new?category=q-a
+    about: Ask questions about configuring anti-slop, CI integration, or strict-ts analysis.
