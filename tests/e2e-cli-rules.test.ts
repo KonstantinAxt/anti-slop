@@ -23,6 +23,7 @@ interface CliResult {
 
 function runCli(args: string[], options: { cwd?: string } = {}): CliResult {
   const cwd = options.cwd || WORKSPACE_ROOT;
+
   return runCliSubprocess(args, cwd);
 }
 
@@ -36,6 +37,7 @@ function runCliSubprocess(args: string[], cwd: string): CliResult {
     }
     const result: CliResult = { stdout, stderr: "", status: 0 };
     if (json !== undefined) result.json = json;
+
     return result;
   } catch (err: unknown) {
     const execErr = err as { stdout?: string; stderr?: string; status?: number };
@@ -48,6 +50,7 @@ function runCliSubprocess(args: string[], cwd: string): CliResult {
     }
     const result: CliResult = { stdout, stderr, status };
     if (json !== undefined) result.json = json;
+
     return result;
   }
 }

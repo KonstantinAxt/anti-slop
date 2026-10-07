@@ -152,44 +152,40 @@ function isThrowOnlyConsequent(consequent: ESTreeNode | null | undefined): boole
   if (!consequent) {
     return false;
   }
-  if (consequent.type === "ThrowStatement") {
+  const target = consequent.type === "BlockStatement" ? consequent.body.at(-1) : consequent;
+  if (!target) {
+    return false;
+  }
+  if (target.type === "ThrowStatement") {
     return true;
   }
-  if (consequent.type === "ExpressionStatement") {
-    return isThrowingCallOrStatement(consequent.expression);
-  }
-  if (consequent.type === "BlockStatement") {
-    if (consequent.body.length === 0) {
-      return false;
-    }
-    const last = consequent.body.at(-1);
-    if (!last) {
-      return false;
-    }
-    if (last.type === "ThrowStatement") {
-      return true;
-    }
-
-    return last.type === "ExpressionStatement" && isThrowingCallOrStatement(last.expression);
+  if (target.type === "ExpressionStatement") {
+    return isThrowingCallOrStatement(target.expression);
   }
 
   return false;
+}
+
+function isNilLiteralOrIdentifier(node: ESTree.Expression): boolean {
+  if (node.type === "Identifier") {
+    return node.name === "undefined" || node.name === "null";
+  }
+
+  return node.type === "Literal" && node.value === null;
 }
 
 function isBinaryUndefinedCheck(node: ESTree.BinaryExpression, varName: string): boolean {
   if (node.operator !== "===" && node.operator !== "==") {
     return false;
   }
-  const isLeftMatch = node.left.type === "Identifier" && node.left.name === varName;
-  const isRightMatch = node.right.type === "Identifier" && node.right.name === varName;
-  if (!isLeftMatch && !isRightMatch) {
-    return false;
+  if (node.left.type === "Identifier" && node.left.name === varName) {
+    return isNilLiteralOrIdentifier(node.right);
   }
-  const other = isLeftMatch ? node.right : node.left;
-  const isIdent = other.type === "Identifier" && (other.name === "undefined" || other.name === "null");
-  const isLit = other.type === "Literal" && other.value === null;
+  if (node.right.type === "Identifier" && node.right.name === varName) {
+    return isNilLiteralOrIdentifier(node.left);
+  }
 
-  return isIdent || isLit;
+  return false;
 }
 
 function isNullOrUndefinedCheck(test: ESTreeNode | null | undefined, varName: string): boolean {
@@ -228,51 +224,28 @@ function valueTypeContainsUndefined(typeNode: unknown): boolean {
 }
 
 function extractFromTypeAnnotation(target: unknown): unknown[] | null {
-  if (!target || typeof target !== "object" || !("typeAnnotation" in target)) {
+  const typeAnn = Reflect.get(Object(target), "typeAnnotation");
+  const innerAnn = Reflect.get(Object(typeAnn), "typeAnnotation");
+  const typeName = Reflect.get(Object(Reflect.get(Object(innerAnn), "typeName")), "name");
+  if (!MAP_CONSTRUCTOR_NAMES[String(typeName)]) {
     return null;
   }
-  const wrapper = Reflect.get(target, "typeAnnotation");
-  if (!wrapper || typeof wrapper !== "object" || !("typeAnnotation" in wrapper)) {
-    return null;
-  }
-  const typeRef = Reflect.get(wrapper, "typeAnnotation");
-  if (!typeRef || typeof typeRef !== "object" || !("typeName" in typeRef)) {
-    return null;
-  }
-  const typeNameNode = Reflect.get(typeRef, "typeName");
-  if (!typeNameNode || typeof typeNameNode !== "object" || !("name" in typeNameNode)) {
-    return null;
-  }
-  const typeName = String(Reflect.get(typeNameNode, "name"));
-  if (!MAP_CONSTRUCTOR_NAMES[typeName]) {
-    return null;
-  }
-  const paramsWrapper = Reflect.get(typeRef, "typeArguments") ?? Reflect.get(typeRef, "typeParameters");
-  if (paramsWrapper && typeof paramsWrapper === "object" && "params" in paramsWrapper && Array.isArray(paramsWrapper.params)) {
-    return paramsWrapper.params;
-  }
+  const paramsWrapper = Reflect.get(Object(innerAnn), "typeArguments") ?? Reflect.get(Object(innerAnn), "typeParameters");
 
-  return [];
+  return Reflect.get(Object(paramsWrapper), "params") ?? [];
 }
 
 function extractFromNewExpression(init: unknown): unknown[] | null {
-  if (!init || typeof init !== "object" || Reflect.get(init, "type") !== "NewExpression") {
+  if (Reflect.get(Object(init), "type") !== "NewExpression") {
     return null;
   }
-  const callee = Reflect.get(init, "callee");
-  if (!callee || typeof callee !== "object" || !("name" in callee)) {
+  const calleeName = Reflect.get(Object(Reflect.get(Object(init), "callee")), "name");
+  if (!MAP_CONSTRUCTOR_NAMES[String(calleeName)]) {
     return null;
   }
-  const calleeName = String(Reflect.get(callee, "name"));
-  if (!MAP_CONSTRUCTOR_NAMES[calleeName]) {
-    return null;
-  }
-  const paramsWrapper = Reflect.get(init, "typeArguments") ?? Reflect.get(init, "typeParameters");
-  if (paramsWrapper && typeof paramsWrapper === "object" && "params" in paramsWrapper && Array.isArray(paramsWrapper.params)) {
-    return paramsWrapper.params;
-  }
+  const paramsWrapper = Reflect.get(Object(init), "typeArguments") ?? Reflect.get(Object(init), "typeParameters");
 
-  return [];
+  return Reflect.get(Object(paramsWrapper), "params") ?? [];
 }
 
 function resolveMapInfoFromAnnotationOrInit(
@@ -490,21 +463,17 @@ function extractHasCallParts(node: ESTreeNode | null | undefined): { receiver: E
 
 function extractBinaryNegatedHas(node: ESTree.BinaryExpression): ESTreeNode | null {
   const { operator, left, right } = node;
-  if (operator === "===" || operator === "==") {
-    if (right.type === "Literal" && right.value === false && left.type !== "PrivateIdentifier" && extractHasCallParts(left)) {
-      return left;
-    }
-    if (left.type === "Literal" && left.value === false && extractHasCallParts(right)) {
-      return right;
-    }
+  const isEqualsFalse = operator === "===" || operator === "==";
+  const isNotEqualsTrue = operator === "!==" || operator === "!=";
+  if (!isEqualsFalse && !isNotEqualsTrue) {
+    return null;
   }
-  if (operator === "!==" || operator === "!=") {
-    if (right.type === "Literal" && right.value === true && left.type !== "PrivateIdentifier" && extractHasCallParts(left)) {
-      return left;
-    }
-    if (left.type === "Literal" && left.value === true && extractHasCallParts(right)) {
-      return right;
-    }
+  const targetBool = isEqualsFalse ? false : true;
+  if (right.type === "Literal" && right.value === targetBool && left.type !== "PrivateIdentifier" && extractHasCallParts(left)) {
+    return left;
+  }
+  if (left.type === "Literal" && left.value === targetBool && extractHasCallParts(right)) {
+    return right;
   }
 
   return null;

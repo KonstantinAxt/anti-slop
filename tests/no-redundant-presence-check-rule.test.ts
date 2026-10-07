@@ -320,4 +320,59 @@ describe("slop/no-redundant-presence-check", () => {
 
     await expectClean(code);
   });
+
+  it("flags double lookup with binary equality check against false or true", async () => {
+    const code = `
+      const registry = new Map<string, number>();
+
+      export function lookupFalse(key: string): number {
+        if (registry.has(key) === false) return 0;
+        return registry.get(key) ?? 0;
+      }
+
+      export function lookupTrue(key: string): number {
+        if (registry.has(key) !== true) return 0;
+        return registry.get(key) ?? 0;
+      }
+
+      export function lookupInverted(key: string): number {
+        if (false === registry.has(key)) return 0;
+        return registry.get(key) ?? 0;
+      }
+    `;
+
+    const findings = await checkWithEslint("src/service.ts", code);
+    const ruleFindings = findings.filter((finding) => finding.rule === RULE_NAME);
+
+    expect(ruleFindings).toHaveLength(3);
+  });
+
+  it("flags unreachable guard with inverted undefined check or null checks", async () => {
+    const code = `
+      const registry = new Map<string, number>();
+
+      export function lookupInverted(key: string): number {
+        if (registry.has(key)) {
+          const val = registry.get(key);
+          if (undefined === val) throw new Error();
+          return val;
+        }
+        return 0;
+      }
+
+      export function lookupNull(key: string): number {
+        if (registry.has(key)) {
+          const val = registry.get(key);
+          if (val == null) throw new Error();
+          return val;
+        }
+        return 0;
+      }
+    `;
+
+    const findings = await checkWithEslint("src/service.ts", code);
+    const ruleFindings = findings.filter((finding) => finding.rule === RULE_NAME);
+
+    expect(ruleFindings).toHaveLength(2);
+  });
 });

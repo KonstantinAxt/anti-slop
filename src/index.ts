@@ -110,11 +110,16 @@ export function resolveTargetFiles(cwd: string, options: AntiSlopOptions): strin
       return [resolved];
     });
   }
+
   if (options.staged) {
-    return getStagedFiles(cwd);
+    const staged = getStagedFiles(cwd);
+
+    return staged.filter((file) => !file.split(path.sep).some((seg) => IGNORED_DIRS.has(seg)));
   }
   if (options.since) {
-    return getDiffFilesSince(cwd, options.since);
+    const diffFiles = getDiffFilesSince(cwd, options.since);
+
+    return diffFiles.filter((file) => !file.split(path.sep).some((seg) => IGNORED_DIRS.has(seg)));
   }
 
   return discoverCodeFiles(cwd);
