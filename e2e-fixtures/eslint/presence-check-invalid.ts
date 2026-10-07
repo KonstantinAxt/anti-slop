@@ -30,19 +30,3 @@ export function handleNegatedEarlyReturn(key: string): number {
 
   return consumeValue(val);
 }
-
-export function handleDoubleLookupTernary(key: string): number {
-  const result = registry.has(key) ? registry.get(key) : 0;
-
-  return result ?? 0;
-}
-
-export function handleDoubleLookupIf(key: string): number {
-  if (registry.has(key)) {
-    const val = registry.get(key);
-
-    return consumeValue(val ?? 0);
-  }
-
-  return 0;
-}

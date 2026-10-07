@@ -2,21 +2,12 @@ import type { Rule, Scope } from "eslint";
 import type * as ESTree from "estree";
 import type { Node as ESTreeNode } from "estree";
 
-const MAP_CONSTRUCTOR_NAMES: Record<string, true> = {
-  Map: true,
-  WeakMap: true,
-  ReadonlyMap: true,
-};
+const MAP_CONSTRUCTOR_NAMES: Record<string, true> = { Map: true, WeakMap: true, ReadonlyMap: true };
 const THROWING_CALLEE_PATTERN = /^(fail|panic|throw|assert|bail|unreachable|error|raise)/i;
 const MIN_MAP_TYPE_ARGUMENTS = 2;
 const MAP_VALUE_TYPE_INDEX = 1;
 
-type ReportFn = (
-  hasCall: ESTreeNode,
-  messageId: "unreachableGuard" | "doubleLookup",
-  receiver: ESTreeNode,
-  key: ESTreeNode,
-) => void;
+type ReportFn = (hasCall: ESTreeNode, receiver: ESTreeNode, key: ESTreeNode) => void;
 
 function isAstNode(value: unknown): value is ESTreeNode {
   return typeof value === "object" && value !== null && "type" in value;
@@ -33,171 +24,88 @@ function getNodeParent(node: ESTreeNode): ESTreeNode | null {
   return null;
 }
 
-function areMemberReceiversEquivalent(
-  r1: ESTree.MemberExpression,
-  r2: ESTree.MemberExpression,
-): boolean {
-  if (r1.computed || r2.computed) {
-    return false;
-  }
+function areMemberReceiversEquivalent(r1: ESTree.MemberExpression, r2: ESTree.MemberExpression): boolean {
+  if (r1.computed || r2.computed) return false;
   const prop1 = r1.property.type === "Identifier" ? r1.property.name : null;
   const prop2 = r2.property.type === "Identifier" ? r2.property.name : null;
-  if (!prop1 || prop1 !== prop2) {
-    return false;
-  }
-  if (r1.object.type === "Super" || r2.object.type === "Super") {
-    return false;
-  }
+  if (!prop1 || prop1 !== prop2 || r1.object.type === "Super" || r2.object.type === "Super") return false;
 
   return areReceiversEquivalent(r1.object, r2.object);
 }
 
-function areReceiversEquivalent(
-  r1: ESTreeNode | null | undefined,
-  r2: ESTreeNode | null | undefined,
-): boolean {
-  if (!r1 || !r2) {
-    return false;
-  }
-  if (r1.type === "Identifier" && r2.type === "Identifier") {
-    return r1.name === r2.name;
-  }
-  if (r1.type === "ThisExpression" && r2.type === "ThisExpression") {
-    return true;
-  }
-  if (r1.type === "MemberExpression" && r2.type === "MemberExpression") {
-    return areMemberReceiversEquivalent(r1, r2);
-  }
+function areReceiversEquivalent(r1: ESTreeNode | null | undefined, r2: ESTreeNode | null | undefined): boolean {
+  if (!r1 || !r2) return false;
+  if (r1.type === "Identifier" && r2.type === "Identifier") return r1.name === r2.name;
+  if (r1.type === "ThisExpression" && r2.type === "ThisExpression") return true;
+  if (r1.type === "MemberExpression" && r2.type === "MemberExpression") return areMemberReceiversEquivalent(r1, r2);
 
   return false;
 }
 
-function areKeysEquivalent(
-  k1: ESTreeNode | null | undefined,
-  k2: ESTreeNode | null | undefined,
-): boolean {
-  if (!k1 || !k2) {
-    return false;
-  }
-  if (k1.type === "Identifier" && k2.type === "Identifier") {
-    return k1.name === k2.name;
-  }
-  if (k1.type === "Literal" && k2.type === "Literal") {
-    return k1.value === k2.value;
-  }
+function areKeysEquivalent(k1: ESTreeNode | null | undefined, k2: ESTreeNode | null | undefined): boolean {
+  if (!k1 || !k2) return false;
+  if (k1.type === "Identifier" && k2.type === "Identifier") return k1.name === k2.name;
 
-  return false;
+  return k1.type === "Literal" && k2.type === "Literal" && k1.value === k2.value;
 }
 
 function getReceiverName(node: ESTreeNode): string {
-  if (node.type === "Identifier") {
-    return node.name;
-  }
+  if (node.type === "Identifier") return node.name;
   if (node.type === "MemberExpression" && !node.computed && node.property.type === "Identifier") {
-    if (node.object.type === "Super") {
-      return `super.${node.property.name}`;
-    }
+    const prefix = node.object.type === "Super" ? "super" : getReceiverName(node.object);
 
-    return `${getReceiverName(node.object)}.${node.property.name}`;
-  }
-  if (node.type === "ThisExpression") {
-    return "this";
+    return prefix + "." + node.property.name;
   }
 
-  return "receiver";
+  return node.type === "ThisExpression" ? "this" : "receiver";
 }
 
 function getKeyName(node: ESTreeNode): string {
-  if (node.type === "Identifier") {
-    return node.name;
-  }
-  if (node.type === "Literal") {
-    return String(node.value);
-  }
-
-  return "key";
+  return node.type === "Identifier" ? node.name : node.type === "Literal" ? String(node.value) : "key";
 }
 
 function isWrappedInAssertionOrCast(node: ESTreeNode): boolean {
   const parent = getNodeParent(node);
-  if (!parent) {
-    return false;
-  }
+  if (!parent) return false;
   const parentType: string = parent.type;
 
-  return (
-    parentType === "TSNonNullExpression" ||
-    parentType === "TSAsExpression" ||
-    parentType === "TSTypeAssertion"
-  );
+  return parentType === "TSNonNullExpression" || parentType === "TSAsExpression" || parentType === "TSTypeAssertion";
 }
 
 function isThrowingCallOrStatement(node: ESTreeNode | null | undefined): boolean {
-  if (!node) {
-    return false;
-  }
-  if (node.type === "ThrowStatement") {
-    return true;
-  }
-  if (node.type === "CallExpression") {
-    const callee = node.callee;
+  if (!node) return false;
+  if (node.type === "ThrowStatement") return true;
 
-    return callee.type === "Identifier" && THROWING_CALLEE_PATTERN.test(callee.name);
-  }
-
-  return false;
+  return node.type === "CallExpression" && node.callee.type === "Identifier" && THROWING_CALLEE_PATTERN.test(node.callee.name);
 }
 
 function isThrowOnlyConsequent(consequent: ESTreeNode | null | undefined): boolean {
-  if (!consequent) {
-    return false;
-  }
-  const target = consequent.type === "BlockStatement" ? consequent.body.at(-1) : consequent;
-  if (!target) {
-    return false;
-  }
-  if (target.type === "ThrowStatement") {
-    return true;
-  }
-  if (target.type === "ExpressionStatement") {
-    return isThrowingCallOrStatement(target.expression);
-  }
+  const target = consequent?.type === "BlockStatement" ? consequent.body.at(-1) : consequent;
+  if (!target) return false;
 
-  return false;
+  return target.type === "ThrowStatement" || (target.type === "ExpressionStatement" && isThrowingCallOrStatement(target.expression));
 }
 
 function isNilLiteralOrIdentifier(node: ESTree.Expression): boolean {
-  if (node.type === "Identifier") {
-    return node.name === "undefined" || node.name === "null";
-  }
+  if (node.type === "Identifier") return node.name === "undefined" || node.name === "null";
 
   return node.type === "Literal" && node.value === null;
 }
 
 function isBinaryUndefinedCheck(node: ESTree.BinaryExpression, varName: string): boolean {
-  if (node.operator !== "===" && node.operator !== "==") {
-    return false;
-  }
-  if (node.left.type === "Identifier" && node.left.name === varName) {
-    return isNilLiteralOrIdentifier(node.right);
-  }
-  if (node.right.type === "Identifier" && node.right.name === varName) {
-    return node.left.type !== "PrivateIdentifier" && isNilLiteralOrIdentifier(node.left);
+  if (node.operator !== "===" && node.operator !== "==") return false;
+  if (node.left.type === "Identifier" && node.left.name === varName) return isNilLiteralOrIdentifier(node.right);
+  if (node.right.type === "Identifier" && node.right.name === varName && node.left.type !== "PrivateIdentifier") {
+    return isNilLiteralOrIdentifier(node.left);
   }
 
   return false;
 }
 
 function isNullOrUndefinedCheck(test: ESTreeNode | null | undefined, varName: string): boolean {
-  if (!test) {
-    return false;
-  }
-  if (test.type === "BinaryExpression") {
-    return isBinaryUndefinedCheck(test, varName);
-  }
-  if (test.type === "UnaryExpression" && test.operator === "!") {
-    return test.argument.type === "Identifier" && test.argument.name === varName;
-  }
+  if (!test) return false;
+  if (test.type === "BinaryExpression") return isBinaryUndefinedCheck(test, varName);
+  if (test.type === "UnaryExpression" && test.operator === "!") return test.argument.type === "Identifier" && test.argument.name === varName;
   if (test.type === "LogicalExpression" && (test.operator === "||" || test.operator === "??")) {
     return isNullOrUndefinedCheck(test.left, varName) || isNullOrUndefinedCheck(test.right, varName);
   }
@@ -206,88 +114,52 @@ function isNullOrUndefinedCheck(test: ESTreeNode | null | undefined, varName: st
 }
 
 function valueTypeContainsUndefined(typeNode: unknown): boolean {
-  if (!typeNode || typeof typeNode !== "object" || !("type" in typeNode)) {
-    return true;
-  }
+  if (!typeNode || typeof typeNode !== "object" || !("type" in typeNode)) return true;
   const nodeType = String(Reflect.get(typeNode, "type"));
-  if (nodeType === "TSUndefinedKeyword" || nodeType === "TSAnyKeyword" || nodeType === "TSUnknownKeyword" || nodeType === "TSVoidKeyword") {
-    return true;
-  }
+  if (nodeType === "TSUndefinedKeyword" || nodeType === "TSAnyKeyword" || nodeType === "TSUnknownKeyword" || nodeType === "TSVoidKeyword") return true;
   if (nodeType === "TSUnionType" && "types" in typeNode) {
     const typesList = Reflect.get(typeNode, "types");
-    if (Array.isArray(typesList)) {
-      return typesList.some((inner) => valueTypeContainsUndefined(inner));
-    }
+    if (Array.isArray(typesList)) return typesList.some((inner) => valueTypeContainsUndefined(inner));
   }
 
   return false;
 }
 
-function extractFromTypeAnnotation(target: unknown): unknown[] | null {
-  const typeAnn = Reflect.get(Object(target), "typeAnnotation");
-  const innerAnn = Reflect.get(Object(typeAnn), "typeAnnotation");
-  const typeName = Reflect.get(Object(Reflect.get(Object(innerAnn), "typeName")), "name");
-  if (!MAP_CONSTRUCTOR_NAMES[String(typeName)]) {
-    return null;
-  }
-  const paramsWrapper = Reflect.get(Object(innerAnn), "typeArguments") ?? Reflect.get(Object(innerAnn), "typeParameters");
+function extractMapParams(typeRef: unknown): unknown[] | null {
+  const paramsWrapper = Reflect.get(Object(typeRef), "typeArguments") ?? Reflect.get(Object(typeRef), "typeParameters");
 
   return Reflect.get(Object(paramsWrapper), "params") ?? [];
 }
 
-function extractFromNewExpression(init: unknown): unknown[] | null {
-  if (Reflect.get(Object(init), "type") !== "NewExpression") {
-    return null;
-  }
-  const calleeName = Reflect.get(Object(Reflect.get(Object(init), "callee")), "name");
-  if (!MAP_CONSTRUCTOR_NAMES[String(calleeName)]) {
-    return null;
-  }
-  const paramsWrapper = Reflect.get(Object(init), "typeArguments") ?? Reflect.get(Object(init), "typeParameters");
+function extractTypeArguments(target: unknown, init: unknown): unknown[] | null {
+  const innerAnn = Reflect.get(Object(Reflect.get(Object(target), "typeAnnotation")), "typeAnnotation");
+  const annName = Reflect.get(Object(Reflect.get(Object(innerAnn), "typeName")), "name");
+  if (MAP_CONSTRUCTOR_NAMES[String(annName)]) return extractMapParams(innerAnn);
 
-  return Reflect.get(Object(paramsWrapper), "params") ?? [];
+  if (Reflect.get(Object(init), "type") === "NewExpression") {
+    const calleeName = Reflect.get(Object(Reflect.get(Object(init), "callee")), "name");
+    if (MAP_CONSTRUCTOR_NAMES[String(calleeName)]) return extractMapParams(init);
+  }
+
+  return null;
 }
 
-function resolveMapInfoFromAnnotationOrInit(
-  typeAnnotationTarget: unknown,
-  init: unknown,
-): { isMap: boolean; valueTypeIncludesUndefined: boolean } | null {
-  const typeArgs = extractFromTypeAnnotation(typeAnnotationTarget) ?? extractFromNewExpression(init);
-  if (!typeArgs) {
-    return null;
-  }
+function resolveMapInfo(target: unknown, init: unknown): { isMap: boolean; valueTypeIncludesUndefined: boolean } | null {
+  const typeArgs = extractTypeArguments(target, init);
+  if (!typeArgs) return null;
+  if (typeArgs.length < MIN_MAP_TYPE_ARGUMENTS) return { isMap: true, valueTypeIncludesUndefined: true };
 
-  if (typeArgs.length < MIN_MAP_TYPE_ARGUMENTS) {
-    return { isMap: true, valueTypeIncludesUndefined: true };
-  }
-
-  const valType = typeArgs[MAP_VALUE_TYPE_INDEX];
-
-  return {
-    isMap: true,
-    valueTypeIncludesUndefined: valueTypeContainsUndefined(valType),
-  };
+  return { isMap: true, valueTypeIncludesUndefined: valueTypeContainsUndefined(typeArgs[MAP_VALUE_TYPE_INDEX]) };
 }
 
-function resolveIdentifierReceiver(
-  receiverNode: ESTree.Identifier,
-  context: Rule.RuleContext,
-): { isMap: boolean; valueTypeIncludesUndefined: boolean } | null {
-  const varName = receiverNode.name;
+function resolveIdentifierReceiver(receiverNode: ESTree.Identifier, context: Rule.RuleContext): { isMap: boolean; valueTypeIncludesUndefined: boolean } | null {
   let currentScope: Scope.Scope | null = context.sourceCode.getScope(receiverNode);
-
   while (currentScope) {
-    const matched = currentScope.variables.find((candidate) => candidate.name === varName);
+    const matched = currentScope.variables.find((candidate) => candidate.name === receiverNode.name);
     if (matched) {
       for (const def of matched.defs) {
-        if (def.type === "Variable") {
-          const decl = def.node;
-
-          return resolveMapInfoFromAnnotationOrInit(decl.id, decl.init);
-        }
-        if (def.type === "Parameter") {
-          return resolveMapInfoFromAnnotationOrInit(def.name, null);
-        }
+        if (def.type === "Variable") return resolveMapInfo(def.node.id, def.node.init);
+        if (def.type === "Parameter") return resolveMapInfo(def.name, null);
       }
     }
     currentScope = currentScope.upper;
@@ -296,138 +168,70 @@ function resolveIdentifierReceiver(
   return null;
 }
 
-function resolveThisMemberReceiver(
-  receiverNode: ESTree.MemberExpression,
-): { isMap: boolean; valueTypeIncludesUndefined: boolean } | null {
+function resolveThisMemberReceiver(receiverNode: ESTree.MemberExpression): { isMap: boolean; valueTypeIncludesUndefined: boolean } | null {
   const propName = receiverNode.property.type === "Identifier" ? receiverNode.property.name : null;
-  if (!propName) {
-    return null;
-  }
-
+  if (!propName) return null;
   let current = getNodeParent(receiverNode);
-  while (current && current.type !== "ClassDeclaration" && current.type !== "ClassExpression") {
-    current = getNodeParent(current);
-  }
-  if (!current || (current.type !== "ClassDeclaration" && current.type !== "ClassExpression")) {
-    return null;
-  }
-
+  while (current && current.type !== "ClassDeclaration" && current.type !== "ClassExpression") current = getNodeParent(current);
+  if (!current || (current.type !== "ClassDeclaration" && current.type !== "ClassExpression")) return null;
   for (const member of current.body.body) {
     if (member.type === "PropertyDefinition" && member.key.type === "Identifier" && member.key.name === propName) {
-      return resolveMapInfoFromAnnotationOrInit(member, member.value);
+      return resolveMapInfo(member, member.value);
     }
   }
 
   return null;
 }
 
-function resolveReceiverInfo(
-  receiverNode: ESTreeNode,
-  context: Rule.RuleContext,
-): { isMap: boolean; valueTypeIncludesUndefined: boolean } | null {
-  if (receiverNode.type === "Identifier") {
-    return resolveIdentifierReceiver(receiverNode, context);
-  }
-  if (receiverNode.type === "MemberExpression" && receiverNode.object.type === "ThisExpression") {
-    return resolveThisMemberReceiver(receiverNode);
-  }
+function resolveReceiverInfo(receiverNode: ESTreeNode, context: Rule.RuleContext): { isMap: boolean; valueTypeIncludesUndefined: boolean } | null {
+  if (receiverNode.type === "Identifier") return resolveIdentifierReceiver(receiverNode, context);
+  if (receiverNode.type === "MemberExpression" && receiverNode.object.type === "ThisExpression") return resolveThisMemberReceiver(receiverNode);
 
   return null;
 }
 
-function checkChildItem(item: unknown, visitor: (child: ESTreeNode) => boolean): boolean {
-  if (isAstNode(item)) {
-    return visitor(item);
-  }
-
-  return false;
-}
-
 function visitPropertyChild(child: unknown, visitor: (child: ESTreeNode) => boolean): boolean {
-  if (Array.isArray(child)) {
-    return child.some((item) => checkChildItem(item, visitor));
-  }
+  if (Array.isArray(child)) return child.some((item) => isAstNode(item) && visitor(item));
 
-  return checkChildItem(child, visitor);
+  return isAstNode(child) && visitor(child);
 }
 
 function visitChildNodes(node: ESTreeNode, visitor: (child: ESTreeNode) => boolean): boolean {
   for (const key of Object.keys(node)) {
-    if (key === "parent" || key === "loc" || key === "range") {
-      continue;
-    }
-    const child = Reflect.get(node, key);
-    if (visitPropertyChild(child, visitor)) {
-      return true;
-    }
+    if (key === "parent" || key === "loc" || key === "range") continue;
+    if (visitPropertyChild(Reflect.get(node, key), visitor)) return true;
   }
 
   return false;
 }
 
-function containsCallOrMutation(
-  node: ESTreeNode | null | undefined,
-  receiverNode: ESTreeNode,
-  keyNode: ESTreeNode,
-  targetGetNode: ESTreeNode | null = null,
-): boolean {
-  if (!node || (targetGetNode && node === targetGetNode)) {
-    return false;
-  }
-  if (node.type === "CallExpression") {
-    return true;
-  }
+function containsCallOrMutation(node: ESTreeNode | null | undefined, receiver: ESTreeNode, key: ESTreeNode, targetGet: ESTreeNode | null = null): boolean {
+  if (!node || (targetGet && node === targetGet)) return false;
+  if (node.type === "CallExpression") return true;
   if (node.type === "AssignmentExpression") {
-    if (node.left.type !== "MemberExpression" && node.left.type !== "Identifier") {
-      return false;
-    }
+    if (node.left.type !== "MemberExpression" && node.left.type !== "Identifier") return false;
 
-    return areReceiversEquivalent(node.left, receiverNode) || areKeysEquivalent(node.left, keyNode);
+    return areReceiversEquivalent(node.left, receiver) || areKeysEquivalent(node.left, key);
   }
-  if (node.type === "UpdateExpression") {
-    return areReceiversEquivalent(node.argument, receiverNode) || areKeysEquivalent(node.argument, keyNode);
-  }
+  if (node.type === "UpdateExpression") return areReceiversEquivalent(node.argument, receiver) || areKeysEquivalent(node.argument, key);
 
-  return visitChildNodes(node, (child) => containsCallOrMutation(child, receiverNode, keyNode, targetGetNode));
+  return visitChildNodes(node, (child) => containsCallOrMutation(child, receiver, key, targetGet));
 }
 
 function isFunctionOrClassBoundary(node: ESTreeNode): boolean {
-  return (
-    node.type === "FunctionDeclaration" ||
-    node.type === "FunctionExpression" ||
-    node.type === "ArrowFunctionExpression" ||
-    node.type === "ClassDeclaration" ||
-    node.type === "ClassExpression"
-  );
+  return node.type === "FunctionDeclaration" || node.type === "FunctionExpression" || node.type === "ArrowFunctionExpression" || node.type === "ClassDeclaration" || node.type === "ClassExpression";
 }
 
-function findGetCallInNode(
-  node: ESTreeNode | null | undefined,
-  receiverNode: ESTreeNode,
-  keyNode: ESTreeNode,
-): ESTreeNode | null {
-  if (!node || isFunctionOrClassBoundary(node)) {
-    return null;
-  }
-
-  if (
-    node.type === "CallExpression" &&
-    node.callee.type === "MemberExpression" &&
-    !node.callee.computed &&
-    node.callee.property.type === "Identifier" &&
-    node.callee.property.name === "get" &&
-    node.arguments.length === 1
-  ) {
+function findGetCallInNode(node: ESTreeNode | null | undefined, receiver: ESTreeNode, key: ESTreeNode): ESTreeNode | null {
+  if (!node || isFunctionOrClassBoundary(node)) return null;
+  if (node.type === "CallExpression" && node.callee.type === "MemberExpression" && !node.callee.computed && node.callee.property.type === "Identifier" && node.callee.property.name === "get" && node.arguments.length === 1) {
     const firstArg = node.arguments.at(0);
-    const isReceiverMatch = node.callee.object.type !== "Super" && areReceiversEquivalent(node.callee.object, receiverNode);
-    if (firstArg && firstArg.type !== "SpreadElement" && isReceiverMatch && areKeysEquivalent(firstArg, keyNode)) {
-      return node;
-    }
+    const isRec = node.callee.object.type !== "Super" && areReceiversEquivalent(node.callee.object, receiver);
+    if (firstArg && firstArg.type !== "SpreadElement" && isRec && areKeysEquivalent(firstArg, key)) return node;
   }
-
   let found: ESTreeNode | null = null;
   visitChildNodes(node, (child) => {
-    found = findGetCallInNode(child, receiverNode, keyNode);
+    found = findGetCallInNode(child, receiver, key);
 
     return found !== null;
   });
@@ -436,77 +240,41 @@ function findGetCallInNode(
 }
 
 function extractHasCallParts(node: ESTreeNode | null | undefined): { receiver: ESTreeNode; key: ESTreeNode } | null {
-  if (
-    !node ||
-    node.type !== "CallExpression" ||
-    node.callee.type !== "MemberExpression" ||
-    node.callee.computed ||
-    node.callee.property.type !== "Identifier" ||
-    node.callee.property.name !== "has" ||
-    node.arguments.length !== 1
-  ) {
-    return null;
-  }
-  if (node.callee.object.type === "Super") {
+  if (!node || node.type !== "CallExpression" || node.callee.type !== "MemberExpression" || node.callee.computed || node.callee.property.type !== "Identifier" || node.callee.property.name !== "has" || node.arguments.length !== 1 || node.callee.object.type === "Super") {
     return null;
   }
   const firstArg = node.arguments.at(0);
-  if (!firstArg || firstArg.type === "SpreadElement") {
-    return null;
-  }
+  if (!firstArg || firstArg.type === "SpreadElement") return null;
 
-  return {
-    receiver: node.callee.object,
-    key: firstArg,
-  };
+  return { receiver: node.callee.object, key: firstArg };
 }
 
 function extractBinaryNegatedHas(node: ESTree.BinaryExpression): ESTreeNode | null {
   const { operator, left, right } = node;
   const isEqualsFalse = operator === "===" || operator === "==";
   const isNotEqualsTrue = operator === "!==" || operator === "!=";
-  if (!isEqualsFalse && !isNotEqualsTrue) {
-    return null;
-  }
+  if (!isEqualsFalse && !isNotEqualsTrue) return null;
   const targetBool = isEqualsFalse ? false : true;
-  if (right.type === "Literal" && right.value === targetBool && left.type !== "PrivateIdentifier" && extractHasCallParts(left)) {
-    return left;
-  }
-  if (left.type === "Literal" && left.value === targetBool && extractHasCallParts(right)) {
-    return right;
-  }
+  if (right.type === "Literal" && right.value === targetBool && left.type !== "PrivateIdentifier" && extractHasCallParts(left)) return left;
+  if (left.type === "Literal" && left.value === targetBool && extractHasCallParts(right)) return right;
 
   return null;
 }
 
 function extractNegatedHasCall(testNode: ESTreeNode | null | undefined): ESTreeNode | null {
-  if (!testNode) {
-    return null;
-  }
+  if (!testNode) return null;
   if (testNode.type === "UnaryExpression" && testNode.operator === "!") {
     const parts = extractHasCallParts(testNode.argument);
 
     return parts ? testNode.argument : null;
   }
-  if (testNode.type === "BinaryExpression") {
-    return extractBinaryNegatedHas(testNode);
-  }
 
-  return null;
+  return testNode.type === "BinaryExpression" ? extractBinaryNegatedHas(testNode) : null;
 }
 
 function isTerminalEarlyExit(node: ESTreeNode | null | undefined): boolean {
-  if (!node) {
-    return false;
-  }
-  if (
-    node.type === "ReturnStatement" ||
-    node.type === "ThrowStatement" ||
-    node.type === "BreakStatement" ||
-    node.type === "ContinueStatement"
-  ) {
-    return true;
-  }
+  if (!node) return false;
+  if (node.type === "ReturnStatement" || node.type === "ThrowStatement" || node.type === "BreakStatement" || node.type === "ContinueStatement") return true;
   if (node.type === "BlockStatement" && node.body.length > 0) {
     const last = node.body.at(-1);
 
@@ -526,21 +294,13 @@ function isNullishThrowGuard(getCall: ESTreeNode): boolean {
 }
 
 function checkNextStatementForUnreachableGuard(nextStmt: ESTreeNode | undefined, varName: string): boolean {
-  if (!nextStmt || nextStmt.type !== "IfStatement") {
-    return false;
-  }
+  if (!nextStmt || nextStmt.type !== "IfStatement") return false;
 
-  return (
-    isNullOrUndefinedCheck(nextStmt.test, varName) &&
-    isThrowOnlyConsequent(nextStmt.consequent) &&
-    !nextStmt.alternate
-  );
+  return isNullOrUndefinedCheck(nextStmt.test, varName) && isThrowOnlyConsequent(nextStmt.consequent) && !nextStmt.alternate;
 }
 
 function isStatementUnreachableGuard(stmt: ESTreeNode, getCall: ESTreeNode, nextStmt: ESTreeNode | undefined): boolean {
-  if (isNullishThrowGuard(getCall)) {
-    return true;
-  }
+  if (isNullishThrowGuard(getCall)) return true;
   if (stmt.type === "VariableDeclaration" && stmt.declarations.length === 1) {
     const decl = stmt.declarations[0];
     if (decl && decl.id.type === "Identifier" && decl.init === getCall) {
@@ -551,18 +311,11 @@ function isStatementUnreachableGuard(stmt: ESTreeNode, getCall: ESTreeNode, next
   return false;
 }
 
-function getValidMapReceiver(
-  hasCall: ESTreeNode,
-  context: Rule.RuleContext,
-): { receiver: ESTreeNode; key: ESTreeNode } | null {
+function getValidMapReceiver(hasCall: ESTreeNode, context: Rule.RuleContext): { receiver: ESTreeNode; key: ESTreeNode } | null {
   const parts = extractHasCallParts(hasCall);
-  if (!parts) {
-    return null;
-  }
+  if (!parts) return null;
   const mapInfo = resolveReceiverInfo(parts.receiver, context);
-  if (!mapInfo || !mapInfo.isMap || mapInfo.valueTypeIncludesUndefined) {
-    return null;
-  }
+  if (!mapInfo || !mapInfo.isMap || mapInfo.valueTypeIncludesUndefined) return null;
 
   return parts;
 }
@@ -571,146 +324,74 @@ export const noRedundantPresenceCheckRule: Rule.RuleModule = {
   meta: {
     type: "problem",
     hasSuggestions: true,
-    docs: {
-      description: "Flags redundant Map#has presence checks before Map#get calls.",
-    },
+    docs: { description: "Flags redundant Map#has presence checks before Map#get calls with unreachable guards." },
     schema: [],
     messages: {
-      unreachableGuard:
-        "Redundant presence check: '{{receiver}}' was checked with 'has({{key}})' before 'get({{key}})' with an unreachable guard. Look up the key once and narrow the result.",
-      doubleLookup:
-        "Redundant presence check: '{{receiver}}' was checked with 'has({{key}})' before 'get({{key}})'. Look up the key once with 'get({{key}})'.",
+      unreachableGuard: "Redundant presence check: '{{receiver}}' was checked with 'has({{key}})' before 'get({{key}})' with an unreachable guard. Look up the key once and narrow the result.",
       suggestNarrow: "Look up the key once with get() and narrow on the result.",
     },
   },
   create(context: Rule.RuleContext) {
-    const report: ReportFn = (hasCall, messageId, receiver, key) => {
-      const receiverName = getReceiverName(receiver);
-      const keyName = getKeyName(key);
-      const loc = hasCall.loc ?? {
-        start: { line: 1, column: 0 },
-        end: { line: 1, column: 0 },
-      };
+    const report: ReportFn = (hasCall, receiver, key) => {
+      const loc = hasCall.loc ?? { start: { line: 1, column: 0 }, end: { line: 1, column: 0 } };
       const rangeStart = hasCall.range?.[0] ?? 0;
-
       context.report({
         loc,
-        messageId,
-        data: {
-          receiver: receiverName,
-          key: keyName,
-        },
-        suggest: [
-          {
-            messageId: "suggestNarrow",
-            fix(fixer) {
-              return fixer.insertTextBeforeRange([rangeStart, rangeStart], "/* suggestion: look up key once with .get() */ ");
-            },
-          },
-        ],
+        messageId: "unreachableGuard",
+        data: { receiver: getReceiverName(receiver), key: getKeyName(key) },
+        suggest: [{
+          messageId: "suggestNarrow",
+          fix(fixer) { return fixer.insertTextBeforeRange([rangeStart, rangeStart], "/* suggestion: look up key once with .get() */ "); },
+        }],
       });
     };
 
-    function checkStatementsSequence(
-      stmts: ESTreeNode[],
-      startIndex: number,
-      hasCall: ESTreeNode,
-      receiver: ESTreeNode,
-      key: ESTreeNode,
-    ): boolean {
+    function checkStatementsSequence(stmts: ESTreeNode[], startIndex: number, hasCall: ESTreeNode, receiver: ESTreeNode, key: ESTreeNode): boolean {
       for (let i = startIndex; i < stmts.length; i++) {
         const stmt = stmts[i];
-        if (!stmt) {
-          continue;
-        }
+        if (!stmt) continue;
         const getCall = findGetCallInNode(stmt, receiver, key);
         if (!getCall) {
-          if (containsCallOrMutation(stmt, receiver, key)) {
-            return false;
-          }
+          if (containsCallOrMutation(stmt, receiver, key)) return false;
           continue;
         }
+        if (isWrappedInAssertionOrCast(getCall)) return false;
+        if (isStatementUnreachableGuard(stmt, getCall, stmts[i + 1])) {
+          report(hasCall, receiver, key);
 
-        if (isWrappedInAssertionOrCast(getCall)) {
-          return false;
+          return true;
         }
 
-        const nextStmt = stmts[i + 1];
-        const isUnreachable = isStatementUnreachableGuard(stmt, getCall, nextStmt);
-        const messageId = isUnreachable ? "unreachableGuard" : "doubleLookup";
-        report(hasCall, messageId, receiver, key);
-
-        return true;
+        return false;
       }
 
       return false;
     }
 
-    function checkTernary(node: ESTree.ConditionalExpression): void {
-      const parts = getValidMapReceiver(node.test, context);
-      if (!parts) {
-        return;
-      }
-      const { receiver, key } = parts;
-      const getCall = findGetCallInNode(node.consequent, receiver, key);
-      if (!getCall || isWrappedInAssertionOrCast(getCall) || containsCallOrMutation(node.consequent, receiver, key, getCall)) {
-        return;
-      }
-
-      report(node.test, "doubleLookup", receiver, key);
-    }
-
     function checkIfStatement(node: ESTree.IfStatement): void {
       const parts = getValidMapReceiver(node.test, context);
-      if (!parts) {
-        return;
+      if (!parts) return;
+      if (node.consequent.type === "BlockStatement") {
+        checkStatementsSequence(node.consequent.body, 0, node.test, parts.receiver, parts.key);
       }
-      const { receiver, key } = parts;
-      const consequent = node.consequent;
-      if (consequent.type !== "BlockStatement") {
-        const getCall = findGetCallInNode(consequent, receiver, key);
-        if (getCall && !isWrappedInAssertionOrCast(getCall)) {
-          report(node.test, "doubleLookup", receiver, key);
-        }
-
-        return;
-      }
-
-      checkStatementsSequence(consequent.body, 0, node.test, receiver, key);
     }
 
-    function checkStatementsForEarlyReturn(
-      stmts: (ESTree.Statement | ESTree.ModuleDeclaration | ESTree.Directive)[],
-    ): void {
+    function checkStatementsForEarlyReturn(stmts: (ESTree.Statement | ESTree.ModuleDeclaration | ESTree.Directive)[]): void {
       for (let i = 0; i < stmts.length; i++) {
         const stmt = stmts[i];
-        if (!stmt || stmt.type !== "IfStatement") {
-          continue;
-        }
+        if (!stmt || stmt.type !== "IfStatement") continue;
         const hasCall = extractNegatedHasCall(stmt.test);
-        if (!hasCall || !isTerminalEarlyExit(stmt.consequent)) {
-          continue;
-        }
+        if (!hasCall || !isTerminalEarlyExit(stmt.consequent)) continue;
         const parts = getValidMapReceiver(hasCall, context);
-        if (!parts) {
-          continue;
-        }
-        const reported = checkStatementsSequence(stmts, i + 1, hasCall, parts.receiver, parts.key);
-        if (reported) {
-          return;
-        }
+        if (!parts) continue;
+        if (checkStatementsSequence(stmts, i + 1, hasCall, parts.receiver, parts.key)) return;
       }
     }
 
     return {
-      ConditionalExpression: checkTernary,
       IfStatement: checkIfStatement,
-      BlockStatement(node) {
-        checkStatementsForEarlyReturn(node.body);
-      },
-      Program(node) {
-        checkStatementsForEarlyReturn(node.body);
-      },
+      BlockStatement(node) { checkStatementsForEarlyReturn(node.body); },
+      Program(node) { checkStatementsForEarlyReturn(node.body); },
     };
   },
 };
