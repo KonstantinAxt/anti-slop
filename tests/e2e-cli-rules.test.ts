@@ -359,11 +359,21 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         { expectedStatus: 0, expectedPassed: true },
       );
     }, 30000);
+
+    it("detects redundant presence checks in presence-check-invalid.ts", () => {
+      assertCliRuleHits(["--json", "e2e-fixtures/eslint/presence-check-invalid.ts"], [
+        "slop/no-redundant-presence-check",
+      ]);
+    }, 30000);
   });
 
   describe("Clean Fixtures and CLI Flags Verification", () => {
     it("passes with exit code 0 and zero findings on clean test", () => {
       assertCliClean("e2e-fixtures/clean/clean.test.ts");
+    }, 30000);
+
+    it("passes with exit code 0 and zero findings on clean presence check fixture", () => {
+      assertCliClean("e2e-fixtures/clean/clean-presence-check.test.ts");
     }, 30000);
 
     it("formats markdown output when --llm is supplied", () => {

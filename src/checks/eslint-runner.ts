@@ -14,6 +14,7 @@ import playwrightPlugin from "eslint-plugin-playwright";
 import jsxA11y from "eslint-plugin-jsx-a11y";
 import slop from "eslint-plugin-slop";
 import { noEnvShellCommandRule } from "./no-env-shell-command-rule.js";
+import { noRedundantPresenceCheckRule } from "./no-redundant-presence-check-rule.js";
 import unicorn from "eslint-plugin-unicorn";
 import useClientPlugin from "eslint-plugin-use-client";
 import barrelFilesPlugin from "eslint-plugin-barrel-files";
@@ -937,6 +938,7 @@ function getEslint(): ESLint {
       rules: {
         ...slop.rules,
         "no-env-shell-command": noEnvShellCommandRule,
+        "no-redundant-presence-check": noRedundantPresenceCheckRule,
       },
     },
     unicorn,
@@ -1034,6 +1036,7 @@ function getEslint(): ESLint {
           "slop/no-trivial-type-aliases": "warn",
           "slop/no-jargon": "warn",
           "slop/no-env-shell-command": "error",
+          "slop/no-redundant-presence-check": "error",
           "no-warning-comments": [
             "error",
             {
@@ -1393,6 +1396,10 @@ const RULE_WHY_AND_SUGGESTIONS: Record<string, { why: string; suggestion?: strin
   "slop/no-env-shell-command": {
     why: "Command injection risk: Executing shell commands built from environment variables (e.g. process.env.SHELL or process.env.ComSpec) allows arbitrary command execution if environment variables are modified or untrusted (CWE-78).",
     suggestion: "Hardcode the command or interpreter executable path directly, or validate the environment variable against a strict allowlist before invocation.",
+  },
+  "slop/no-redundant-presence-check": {
+    why: "TypeScript does not narrow Map#get after Map#has (microsoft/TypeScript#13086). Checking presence before get introduces redundant hash lookups or unreachable error guards.",
+    suggestion: "Look up the key once with .get() and narrow the result or use nullish coalescing (??).",
   },
   "use-client/require-use-client": {
     why: "Next.js / RSC architecture: Components without hooks, event handlers, or browser APIs should remain React Server Components to avoid inflating client bundles.",
