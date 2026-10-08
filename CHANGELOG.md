@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.43](https://github.com/KonstantinAxt/anti-slop/compare/anti-slop-v0.1.42...anti-slop-v0.1.43) (2026-10-08)
+
+
+### Bug Fixes
+
+* **judge:** accept one fenced JSON block after prose ([#19](https://github.com/KonstantinAxt/anti-slop/issues/19)) ([4fde4d6](https://github.com/KonstantinAxt/anti-slop/commit/4fde4d649e28454793e277b0bb699df93c104cdc))
+
 ## [0.1.42](https://github.com/KonstantinAxt/anti-slop/compare/anti-slop-v0.1.41...anti-slop-v0.1.42) (2026-10-08)
 
 
