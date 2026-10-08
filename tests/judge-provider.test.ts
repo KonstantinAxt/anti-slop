@@ -80,6 +80,20 @@ describe("OpenAI Compatible Provider Integration", () => {
 
     expect(resSuccess.provenance.usage?.outputTokens).toBe(18);
 
+    expect("reasoning_effort" in capturedBody).toBe(false);
+
+    expect(resSuccess.provenance.params.reasoningEffort).toBeUndefined();
+
+    // 1b. Reasoning effort is sent on the wire and recorded in provenance
+    const resEffort = await reviewWithJudge(
+      { diff: "+const a = 1;", files: [{ path: "src/a.ts", content: "const a = 1;\n" }] },
+      { provider, reasoningEffort: "medium" }
+    );
+
+    expect(capturedBody.reasoning_effort).toBe("medium");
+
+    expect(resEffort.provenance.params.reasoningEffort).toBe("medium");
+
     // 2. HTTP 5xx -> PROVIDER_ERROR
     serverMode = "server_error";
 

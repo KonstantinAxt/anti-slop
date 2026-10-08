@@ -1,8 +1,12 @@
 export interface JudgeInput { diff: string; files: { path: string; content: string }[]; }
 
+export type JudgeReasoningEffort = "low" | "medium" | "high";
+
+export interface JudgeCompletionRequest { system: string; user: string; maxTokens: number; temperature: number; timeoutMs: number; reasoningEffort?: JudgeReasoningEffort }
+
 export interface JudgeProvider {
   name: string; model: string; endpoint: string;
-  complete(req: { system: string; user: string; maxTokens: number; temperature: number; timeoutMs: number }): Promise<{ text: string; usage?: { inputTokens: number; outputTokens: number } }>;
+  complete(req: JudgeCompletionRequest): Promise<{ text: string; usage?: { inputTokens: number; outputTokens: number } }>;
 }
 
 export interface JudgeFinding {
@@ -15,7 +19,7 @@ export type JudgeAbstainReason = "NEEDS_HUMAN_ATTENTION" | "TIMEOUT" | "NETWORK_
 export interface JudgeProvenance {
   provider: string; endpoint: string; model: string;
   systemPromptSha256: string; userTemplateSha256: string; schemaVersion: string; schemaSha256: string;
-  params: { temperature: number; maxTokens: number; timeoutMs: number; inputTokenCeiling: number };
+  params: { temperature: number; maxTokens: number; timeoutMs: number; inputTokenCeiling: number; reasoningEffort?: JudgeReasoningEffort };
   engineCommit: string | null; timestamp: string; latencyMs: number;
   usage?: { inputTokens: number; outputTokens: number }; redactions: number; droppedFiles: string[];
 }
@@ -27,4 +31,6 @@ export interface JudgeResult {
 
 export interface ReviewOptions {
   provider: JudgeProvider; inputTokenCeiling?: number; maxTokens?: number; timeoutMs?: number;
+  // Sent to the provider as `reasoning_effort`; omitted from the request and provenance when unset.
+  reasoningEffort?: JudgeReasoningEffort;
 }

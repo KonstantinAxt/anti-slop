@@ -58,7 +58,7 @@ export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): P
     userTemplateSha256: USER_TEMPLATE_SHA256,
     schemaVersion: JUDGE_SCHEMA_VERSION,
     schemaSha256: SCHEMA_SHA256,
-    params: { temperature: 0, maxTokens, timeoutMs, inputTokenCeiling },
+    params: { temperature: 0, maxTokens, timeoutMs, inputTokenCeiling, ...(opts.reasoningEffort ? { reasoningEffort: opts.reasoningEffort } : {}) },
     engineCommit: ENGINE_COMMIT,
     timestamp,
     redactions: redacted.redactions,
@@ -76,7 +76,7 @@ export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): P
   let completion: { text: string; usage?: { inputTokens: number; outputTokens: number } };
 
   try {
-    completion = await opts.provider.complete({ system: SYSTEM_PROMPT, user: userPrompt, maxTokens, temperature: 0, timeoutMs });
+    completion = await opts.provider.complete({ system: SYSTEM_PROMPT, user: userPrompt, maxTokens, temperature: 0, timeoutMs, ...(opts.reasoningEffort ? { reasoningEffort: opts.reasoningEffort } : {}) });
   } catch (error) {
     const latencyMs = Math.round(performance.now() - startTime);
     let reason: JudgeAbstainReason = "PROVIDER_ERROR";

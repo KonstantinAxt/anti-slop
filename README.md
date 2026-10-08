@@ -446,6 +446,8 @@ Judge findings are opinions and never alter deterministic `runAntiSlop` results.
 
 The caller explicitly provides the base URL, API key, and model name. The library reads no environment variables and stores no network endpoints.
 
+`reasoningEffort` (`"low"`, `"medium"` or `"high"`) is optional. When set, it is sent to the provider as `reasoning_effort` and recorded in the result's provenance. When unset, nothing is sent. Reasoning tokens count against `maxTokens` (default: 2000), so raise `maxTokens` when you set an effort.
+
 Before transmitting prompts to the remote provider:
 - **Sensitive Files Dropped**: Files matching `.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, and SSH keys (`id_rsa*`) are completely dropped.
 - **Secret Redaction**: Common secret token formats (AWS keys, GitHub tokens, API keys starting with `sk-`, JWTs, Bearer headers, PEM blocks) and high-entropy string assignments to variables containing key, secret, token, or password are masked with `[REDACTED]`.

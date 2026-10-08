@@ -1,4 +1,4 @@
-import type { JudgeProvider } from "./types.js";
+import type { JudgeCompletionRequest, JudgeProvider } from "./types.js";
 
 const DEFAULT_TEMPERATURE = 0;
 const DEFAULT_TIMEOUT_MS = 25000;
@@ -172,13 +172,7 @@ export function createOpenAICompatibleProvider(opts: {
     name: "openai-compatible",
     model: opts.model,
     endpoint,
-    async complete(req: {
-      system: string;
-      user: string;
-      maxTokens: number;
-      temperature: number;
-      timeoutMs: number;
-    }): Promise<{
+    async complete(req: JudgeCompletionRequest): Promise<{
       text: string;
       usage?: { inputTokens: number; outputTokens: number };
     }> {
@@ -190,6 +184,7 @@ export function createOpenAICompatibleProvider(opts: {
         ],
         temperature: req.temperature,
         max_tokens: req.maxTokens,
+        ...(req.reasoningEffort ? { reasoning_effort: req.reasoningEffort } : {}),
       };
 
       try {
