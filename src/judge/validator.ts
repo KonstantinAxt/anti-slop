@@ -2,7 +2,8 @@ import type { JudgeFinding } from "./types.js";
 
 const MIN_REASON_LEN = 10;
 const MAX_REASON_LEN = 1000;
-const CODE_FENCE_TRIM = 3;
+const CODE_FENCE = "```";
+const ONE_FENCED_BLOCK_PARTS = 3;
 const ROOT_KEYS: Record<string, true> = { verdict: true, findings: true, notes: true };
 const ITEM_KEYS: Record<string, true> = { file: true, line_range: true, problem_category: true, reason: true, confidence: true, suggested_fix: true };
 const RANGE_KEYS: Record<string, true> = { start: true, end: true };
@@ -18,11 +19,11 @@ export type ValidationResult = { ok: true; data: ValidatedJudgeOutput } | { ok: 
 function parseJson(raw: string): { ok: true; val: Record<string, unknown> } | { ok: false; error: string } {
   let text = raw.trim();
 
-  if (text.startsWith("```") && text.endsWith("```")) {
-    const inner = text.slice(CODE_FENCE_TRIM, -CODE_FENCE_TRIM);
+  if (!text.startsWith("{")) {
+    const parts = text.split(CODE_FENCE);
 
-    if (inner.includes("```")) return { ok: false, error: "Multiple fences" };
-    text = inner.replace(/^[a-zA-Z0-9_-]*\s*\n?/, "").trim();
+    if (parts.length > ONE_FENCED_BLOCK_PARTS) return { ok: false, error: "Multiple fences" };
+    if (parts.length === ONE_FENCED_BLOCK_PARTS) text = (parts[1] ?? "").replace(/^[a-zA-Z0-9_-]*\s*\n?/, "").trim();
   }
 
   if (!text.startsWith("{") || !text.endsWith("}")) return { ok: false, error: "Not JSON" };

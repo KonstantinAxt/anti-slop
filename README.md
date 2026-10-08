@@ -461,7 +461,7 @@ The judge never throws for network or model failures. Instead, it returns an `AB
 - `TIMEOUT`: The provider failed to respond within the configured timeout (default: 25000 ms).
 - `NETWORK_ERROR`: Network connectivity failed or connection was refused.
 - `PROVIDER_ERROR`: The provider returned an HTTP error status (such as 5xx) or an invalid response payload.
-- `MALFORMED_OUTPUT`: The model response violated the required JSON schema, reported findings for files not in the input, or reported inconsistent dispositions.
+- `MALFORMED_OUTPUT`: The model response violated the required JSON schema, reported findings for files not in the input, or reported inconsistent dispositions. A response may be bare JSON, or contain exactly one fenced code block holding the JSON (prose around the block is ignored). A response with more than one fenced block is malformed.
 
 ## Continuous Integration & Merge Queue
 
