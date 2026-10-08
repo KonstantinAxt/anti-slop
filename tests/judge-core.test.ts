@@ -85,6 +85,25 @@ describe("LLM Judge Core Public API", () => {
     expect(res3.abstainReason).toBe("MALFORMED_OUTPUT");
   });
 
+  it("fenced output -> parses one block after prose, abstains on two blocks, keeps fences inside bare JSON strings", async () => {
+    // Synthetic fixture: model wraps its JSON answer in prose and code fences
+    const sample = [{ path: "src/f.ts", content: "export {};" }];
+    const allow = JSON.stringify({ verdict: "ALLOW", findings: [] });
+    const review = async (text: string) => reviewWithJudge({ diff: "+x", files: sample }, { provider: createStaticProvider([text]) });
+
+    const prose = await review(`The guards are justified.\n\n\`\`\`json\n${allow}\n\`\`\``);
+
+    expect(prose.disposition).toBe("ALLOW");
+
+    const twoBlocks = await review(`\`\`\`json\n${allow}\n\`\`\`\nOr:\n\`\`\`json\n${allow}\n\`\`\``);
+
+    expect(twoBlocks.abstainReason).toBe("MALFORMED_OUTPUT");
+
+    const fenceInString = await review(JSON.stringify({ verdict: "ALLOW", findings: [], notes: "Use ```ts code``` here." }));
+
+    expect(fenceInString.disposition).toBe("ALLOW");
+  });
+
   it("provider Error -> ABSTAIN PROVIDER_ERROR", async () => {
     // Synthetic fixture: provider throwing operational error
     const res = await reviewWithJudge({ diff: "+x", files: [{ path: "src/f.ts", content: "export {};" }] }, { provider: createStaticProvider([new Error("offline failure")]) });
