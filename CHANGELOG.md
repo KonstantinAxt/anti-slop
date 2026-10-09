@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.45](https://github.com/KonstantinAxt/anti-slop/compare/anti-slop-v0.1.44...anti-slop-v0.1.45) (2026-10-09)
+
+
+### Bug Fixes
+
+* **scan:** walk explicitly targeted directories that git ignores ([#24](https://github.com/KonstantinAxt/anti-slop/issues/24)) ([1eded27](https://github.com/KonstantinAxt/anti-slop/commit/1eded27e89c4ff0c65f4aca22b2613028c675f8e))
+
 ## [0.1.44](https://github.com/KonstantinAxt/anti-slop/compare/anti-slop-v0.1.43...anti-slop-v0.1.44) (2026-10-09)
 
 
