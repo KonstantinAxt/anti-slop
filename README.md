@@ -226,6 +226,7 @@ The eslint check identifies logic errors, complexity, and common shortcuts:
 - slop/no-jargon: Comments must not use filler words like straightforward or detailed.
 - slop/no-env-shell-command: You must not construct child process execution commands from environment variables without allowlisting or validation.
 - slop/no-redundant-presence-check: You must not check Map#has before Map#get with redundant lookups or unreachable guards; look up the key once and narrow the result.
+- slop/no-reflect-escape: You must not use Reflect.get or Reflect.apply to escape static typing; use typed property access, typed function calls, or boundary schema parsing.
 - no-warning-comments: Code must not contain leftover scratchpad notes or prompt markers.
 - no-nested-ternary: You must not nest ternary expressions; use if/else chains or switch statements instead.
 - array-callback-return: Callbacks of array methods (such as find, filter, map, some, every, reduce, and sort) must return a value.
