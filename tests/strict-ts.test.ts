@@ -46,7 +46,7 @@ const WHY_EXPLICIT_ANY = "Type safety: Explicit any disables type checking.";
 const SUGGEST_NON_NULL =
   "Use optional chaining (?.), a guard check, or fallback (??) instead of overriding TypeScript's null safety with !.";
 const SUGGEST_EXPLICIT_ANY =
-  "Use 'unknown', a concrete domain type, a generic, or a Zod schema validation.";
+  "Parse at the boundary with a schema (e.g. Zod), or use a concrete domain type or a generic.";
 
 const SUGGEST_UNDEFINED_CHECK =
   "Check for undefined using optional chaining (?.), a guard check (if (!val) return), or nullish coalescing (??).";
