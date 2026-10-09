@@ -8,6 +8,8 @@ vi.mock("node:child_process", async (importOriginal) => {
     ...actual,
     execSync: vi.fn(),
     execFileSync: vi.fn(),
+    // Real git exits 1 from check-ignore when the directory is not ignored
+    spawnSync: vi.fn(() => ({ status: 1 })),
   };
 });
 
@@ -55,14 +57,14 @@ describe("Git Diff Helpers (src/git.ts)", () => {
     vi.mocked(execSync).mockReturnValue(stdout as never);
 
     getDiffFilesSince(cwd, "origin/refs/heads/main");
-    expect(execSync).toHaveBeenCalledWith("git diff origin/main...HEAD --name-only --diff-filter=ACMR", {
+    expect(execSync).toHaveBeenLastCalledWith("git diff origin/main...HEAD --name-only --diff-filter=ACMR", {
       cwd,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
     });
 
     getDiffFilesSince(cwd, "refs/heads/main");
-    expect(execSync).toHaveBeenCalledWith("git diff main...HEAD --name-only --diff-filter=ACMR", {
+    expect(execSync).toHaveBeenLastCalledWith("git diff main...HEAD --name-only --diff-filter=ACMR", {
       cwd,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
@@ -109,6 +111,24 @@ describe("Git Diff Helpers (src/git.ts)", () => {
         stdio: ["ignore", "pipe", "ignore"],
       }
     );
+  });
+
+  it("keeps dot and build directories when no ignore set is given", () => {
+    vi.mocked(execFileSync).mockReturnValue("dist/bundle.js\0.hidden/secret.ts\0" as never);
+
+    expect(getTrackedCodeFiles(cwd)).toEqual([path.resolve(cwd, "dist/bundle.js"), path.resolve(cwd, ".hidden/secret.ts")]);
+  });
+
+  it("strips refs/heads only as a leading prefix", () => {
+    vi.mocked(execSync).mockReturnValue("" as never);
+
+    getDiffFilesSince(cwd, "feature/refs/heads/x");
+
+    expect(execSync).toHaveBeenCalledWith("git diff feature/refs/heads/x...HEAD --name-only --diff-filter=ACMR", {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
   });
 
   it("returns null when git ls-files throws or fails", () => {
