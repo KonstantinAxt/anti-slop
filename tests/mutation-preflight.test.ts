@@ -217,4 +217,21 @@ describe("Mutation Preflight & Capacity Estimator", () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("reports 0 changed production files and states nothing will be mutated when target files are empty", async () => {
+    const report = await calculateMutationPreflight({
+      cwd: process.cwd(),
+      since: "HEAD",
+    });
+
+    expect(report.mutableFiles).toHaveLength(0);
+    expect(report.fileEstimates).toHaveLength(0);
+    expect(report.totalEstimatedMutants).toBe(0);
+
+    const output = formatTerminalPreflight(report);
+
+    expect(output).toContain("Changed production files: 0");
+    expect(output).toContain("Nothing will be mutated.");
+    expect(output).not.toContain("Target File Breakdown:");
+  });
 });

@@ -311,8 +311,7 @@ export async function calculateMutationPreflight(
 ): Promise<MutationPreflightReport> {
   const cwd = path.resolve(options.cwd || process.cwd());
   const targetFiles = resolvePreflightTargets(cwd, options);
-  const mutableFiles = filterProductionFilesForMutation(cwd, targetFiles);
-
+  const mutableFiles = targetFiles.length === 0 ? [] : filterProductionFilesForMutation(cwd, targetFiles);
   const maxFilesLimit =
     options.maxMutationFiles && options.maxMutationFiles > 0
       ? options.maxMutationFiles
@@ -409,7 +408,9 @@ export function formatTerminalPreflight(report: MutationPreflightReport): string
     lines.push(`   ⚠️  SCOPE TOO BROAD: ${report.mutableFiles.length} files exceed safety limit of ${report.maxFilesLimit}.`);
     lines.push("   Stryker run will abort in CI to prevent runner starvation.");
   }
-
+  if (report.mutableFiles.length === 0) {
+    lines.push("   Nothing will be mutated.");
+  }
   // File breakdown table
   if (report.fileEstimates.length > 0) {
     lines.push("");
