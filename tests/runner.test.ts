@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -171,56 +171,59 @@ describe("AntiSlop Core Runner", () => {
   }, 30000);
 
 
-  it("calibrates implicit-any findings to warning in loose mode, respecting explicit overrides", async () => {
-    const sandbox = createSandbox("temp-loose-mode-sandbox");
-    const testFile = path.join(sandbox.dir, "src/implicit.ts");
-    fs.writeFileSync(testFile, "export function greet(name) { return 'Hello ' + name; }");
+  // Each scenario runs a full scan, so each gets its own timeout budget instead of sharing one
+  describe("implicit-any calibration in loose mode", () => {
+    let sandbox: { dir: string; cleanup: () => void };
+    let testFile: string;
 
-    // 1. Normal mode: implicit-any should be an error, causing overall failure
-    const normalResult = await runAntiSlop({
-      cwd: sandbox.dir,
-      files: [testFile],
+    beforeAll(() => {
+      sandbox = createSandbox("temp-loose-mode-sandbox");
+      testFile = path.join(sandbox.dir, "src/implicit.ts");
+      fs.writeFileSync(testFile, "export function greet(name) { return 'Hello ' + name; }");
     });
-    const normalFinding = normalResult.findings.find((f) => f.rule === "no-implicit-any");
-    expect(normalFinding).toBeDefined();
-    expect(normalFinding?.severity).toBe("error");
-    expect(normalResult.passed).toBe(false);
 
-    // 2. Loose mode: implicit-any defaults to warning, allowing overall pass
-    const looseResult = await runAntiSlop({
-      cwd: sandbox.dir,
-      files: [testFile],
-      allowLooseTsConfig: true,
+    afterAll(() => {
+      sandbox.cleanup();
     });
-    const looseFinding = looseResult.findings.find((f) => f.rule === "no-implicit-any");
-    expect(looseFinding).toBeDefined();
-    expect(looseFinding?.severity).toBe("warning");
-    expect(looseResult.passed).toBe(true);
 
-    // 3. Loose mode with explicit repository override to "error"
-    const overrideErrorResult = await runAntiSlop({
-      cwd: sandbox.dir,
-      files: [testFile],
-      allowLooseTsConfig: true,
-      rules: { "strict-ts/no-implicit-any": "error" },
-    });
-    const overrideErrorFinding = overrideErrorResult.findings.find((f) => f.rule === "no-implicit-any");
-    expect(overrideErrorFinding?.severity).toBe("error");
-    expect(overrideErrorResult.passed).toBe(false);
+    it("reports implicit any as an error that fails the run in normal mode", async () => {
+      const result = await runAntiSlop({ cwd: sandbox.dir, files: [testFile] });
 
-    // 4. Loose mode with explicit repository override to "off"
-    const overrideOffResult = await runAntiSlop({
-      cwd: sandbox.dir,
-      files: [testFile],
-      allowLooseTsConfig: true,
-      rules: { "strict-ts/no-implicit-any": "off" },
-    });
-    const overrideOffFinding = overrideOffResult.findings.find((f) => f.rule === "no-implicit-any");
-    expect(overrideOffFinding).toBeUndefined();
-    expect(overrideOffResult.passed).toBe(true);
+      expect(result.findings.find((f) => f.rule === "no-implicit-any")?.severity).toBe("error");
+      expect(result.passed).toBe(false);
+    }, 30000);
 
-    sandbox.cleanup();
-  }, 30000);
+    it("downgrades implicit any to a warning in loose mode", async () => {
+      const result = await runAntiSlop({ cwd: sandbox.dir, files: [testFile], allowLooseTsConfig: true });
+
+      expect(result.findings.find((f) => f.rule === "no-implicit-any")?.severity).toBe("warning");
+      expect(result.passed).toBe(true);
+    }, 30000);
+
+    it("keeps an explicit error override in loose mode", async () => {
+      const result = await runAntiSlop({
+        cwd: sandbox.dir,
+        files: [testFile],
+        allowLooseTsConfig: true,
+        rules: { "strict-ts/no-implicit-any": "error" },
+      });
+
+      expect(result.findings.find((f) => f.rule === "no-implicit-any")?.severity).toBe("error");
+      expect(result.passed).toBe(false);
+    }, 30000);
+
+    it("drops implicit any findings with an explicit off override in loose mode", async () => {
+      const result = await runAntiSlop({
+        cwd: sandbox.dir,
+        files: [testFile],
+        allowLooseTsConfig: true,
+        rules: { "strict-ts/no-implicit-any": "off" },
+      });
+
+      expect(result.findings.some((f) => f.rule === "no-implicit-any")).toBe(false);
+      expect(result.passed).toBe(true);
+    }, 30000);
+  });
 
   it("runs PR size check when options.prSize is true or checks filter includes pr-size", async () => {
     const sandbox = createSandbox("temp-prsize-sandbox");
