@@ -1,5 +1,8 @@
 import * as fs from "node:fs";
-import type { AntiSlopOptions } from "../src/types.js";
+import { runLlmReview, withLlmReview } from "../src/judge/gate.js";
+import { createOpenAICompatibleProvider } from "../src/judge/provider.js";
+import type { JudgeProvider } from "../src/judge/types.js";
+import type { AntiSlopOptions, AntiSlopResult } from "../src/types.js";
 
 const HELP_TEXT = `
 🛡️  anti-slop — Deterministic Code Review Gate
@@ -27,6 +30,8 @@ OPTIONS:
   --pr-size-warn-files <n> Changed files warning threshold (default: 10)
   --checks, --check <list> Comma-separated checks to run: base | crap | mutation | pr-size
   --pr-size-fail-files <n> Changed files failure threshold (default: 25)
+  --llm-review            Advisory model review of changed files (needs --since or --staged,
+                          ANTI_SLOP_JUDGE_BASE_URL and ANTI_SLOP_JUDGE_API_KEY). Never changes the exit code.
   -v, --version           Show version number
   -h, --help              Show this help message
 
@@ -37,8 +42,12 @@ EXAMPLES:
   anti-slop --crap                        # Run CRAP analysis on repository
   anti-slop --mutation --crap             # Run mutation testing and CRAP analysis
   anti-slop --since origin/main --llm     # Pipe to LLM reviewer (e.g. ocr, diffray, pbcopy)
+  anti-slop --since origin/main --llm-review  # Add advisory LLM findings (sends changed files to the provider)
   anti-slop src/services/                 # Check specific directory
 `;
+
+// Evaluated model: passed the judge benchmark on two held-out sets.
+const DEFAULT_JUDGE_MODEL = "claude-haiku-4-5-20251001";
 
 function writeStream(stream: NodeJS.WriteStream, data: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -71,6 +80,32 @@ function getVersion(): string {
   }
 }
 
+// Undefined, with exit code 2, when the review can't run, so a missing diff or key can't look like a clean review.
+async function resolveLlmReviewProvider(options: AntiSlopOptions): Promise<JudgeProvider | undefined> {
+  const refuse = async (message: string): Promise<undefined> => {
+    process.exitCode = 2;
+    await writeStream(process.stderr, `${message}\n`);
+
+    return undefined;
+  };
+  if (!options.since && !options.staged) return refuse("--llm-review needs a diff: add --since <ref> or --staged.");
+  const baseUrl = process.env.ANTI_SLOP_JUDGE_BASE_URL;
+  const apiKey = process.env.ANTI_SLOP_JUDGE_API_KEY;
+  if (!baseUrl || !apiKey) return refuse("--llm-review needs ANTI_SLOP_JUDGE_BASE_URL and ANTI_SLOP_JUDGE_API_KEY.");
+  const model = process.env.ANTI_SLOP_JUDGE_MODEL || DEFAULT_JUDGE_MODEL;
+
+  return createOpenAICompatibleProvider({ baseUrl, apiKey, model });
+}
+
+// Merges the advisory review into the scan result and returns the summary line printed after non-JSON output.
+async function addLlmReview(scan: AntiSlopResult, options: AntiSlopOptions, targetFiles: string[], provider: JudgeProvider): Promise<{ result: AntiSlopResult; summary: string }> {
+  const cwd = options.cwd ?? process.cwd();
+  const gitRange = options.staged ? ["--cached"] : [`${options.since ?? ""}...HEAD`];
+  const review = await runLlmReview(cwd, gitRange, targetFiles, provider);
+
+  return { result: withLlmReview(scan, review), summary: `\nLLM review (advisory): ${review.check.reason ?? ""}\n` };
+}
+
 export async function runCli(): Promise<void> {
   const args = process.argv.slice(2);
 
@@ -91,6 +126,7 @@ export async function runCli(): Promise<void> {
 
   let format: "terminal" | "llm" | "json" = "terminal";
   let mutationPreflight = false;
+  let llmReview = false;
   const positionalFiles: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
@@ -169,6 +205,8 @@ export async function runCli(): Promise<void> {
       if (!isNaN(val)) options.prSizeFailFiles = val;
     } else if (arg === "--allow-loose-tsconfig" || arg === "--loose-tsconfig") {
       options.allowLooseTsConfig = true;
+    } else if (arg === "--llm-review") {
+      llmReview = true;
     } else if (!arg.startsWith("-")) {
       positionalFiles.push(arg);
     }
@@ -198,11 +236,17 @@ export async function runCli(): Promise<void> {
     await writeStream(process.stdout, output);
     return;
   }
+
+  const llmProvider = llmReview ? await resolveLlmReviewProvider(options) : undefined;
+  if (llmReview && !llmProvider) return;
+
   try {
     // Exception: dynamic import defers loading the heavy ESLint and TypeScript engine so --help exits instantly
-    const { runAntiSlop, formatOutput } = await import("../src/index.ts");
-    const result = await runAntiSlop(options);
-    const output = formatOutput(result, format);
+    const { runAntiSlop, formatOutput, resolveTargetFiles } = await import("../src/index.ts");
+    const scan = await runAntiSlop(options);
+    const reviewed = llmProvider ? await addLlmReview(scan, options, resolveTargetFiles(options.cwd ?? process.cwd(), options), llmProvider) : { result: scan, summary: "" };
+    const { result } = reviewed;
+    const output = formatOutput(result, format) + (format === "json" ? "" : reviewed.summary);
 
     const isSuccess = result.passed && result.completedAllChecks !== false;
     if (format === "terminal" && isSuccess) {

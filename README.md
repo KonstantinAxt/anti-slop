@@ -428,9 +428,33 @@ $$\text{Review Lines} = \text{Additions} + \min(\text{Deletions}, \text{Addition
 
 Pure deletions of dead code do not inflate the review burden score. Lockfiles, snapshots, minified bundles, test fixtures, and generated artifacts are excluded by default.
 
-### LLM Judge (Experimental, Library Only)
+### LLM Judge (Experimental, Opt-in)
 
-anti-slop provides an optional, blinded semantic judge via `reviewWithJudge(...)` in the TypeScript API. This check is strictly opt-in and off by default. It is not exposed through CLI flags or automated CI runs.
+anti-slop has an optional semantic judge. It is off by default. Without `--llm-review`, anti-slop makes no model request, and its output and exit codes do not change. There is no CI or pull request integration.
+
+#### CLI: `--llm-review`
+
+```bash
+export ANTI_SLOP_JUDGE_BASE_URL=https://your-provider.example/v1   # any OpenAI-compatible endpoint
+export ANTI_SLOP_JUDGE_API_KEY=...
+export ANTI_SLOP_JUDGE_MODEL=claude-haiku-4-5-20251001            # optional; this is the default
+anti-slop --since origin/main --llm-review
+```
+
+- **What it reviews:** each changed `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs` or `.cjs` file with a non-empty diff, one request per file, after the normal scan.
+- **Advisory only:** findings are warnings with check `llm-review` and rule `unnecessary-under-invariant`. They never change the exit code.
+- **Abstentions are visible:** the terminal and `--llm` output end with one summary line, for example `LLM review (advisory): Reviewed 4 files with claude-haiku-4-5-20251001: 1 findings, 1 abstained (TIMEOUT 1)`. `--json` has the same text in `checks["llm-review"].reason`. A timeout, provider error or malformed answer never reads as a clean review, and never hides deterministic findings.
+- **Refusals:** without `--since <ref>` or `--staged`, or without the base URL and API key, anti-slop exits with code 2 before scanning.
+- **Budget:** one request per changed file, with at most 2000 output tokens, a 25000 ms timeout, and no request for inputs above about 12000 tokens (`TOKEN_CEILING`). With the default model, a file cost about $0.004 in the evaluation.
+- **Credentials:** the key is read only from `ANTI_SLOP_JUDGE_API_KEY` and sent only as the `Authorization` header to your base URL. anti-slop doesn't store it.
+
+#### Evaluation
+
+The default model passed a pre-registered evaluation with blind human rating: extra catches beyond the deterministic rules, no added false alarms, abstention under 30%, and cost and latency within the bars. It passed again on a second set of 20 new repositories. Opus 5.5 at low effort did not pass on that second set. Headline results are in [issue #24](https://github.com/KonstantinAxt/anti-slop/issues/24).
+
+#### API
+
+`reviewWithJudge(input, { provider })` reviews one diff and its files. Use `createOpenAICompatibleProvider({ baseUrl, apiKey, model })` for a provider. The library itself reads no environment variables.
 
 #### Purpose and Rubric
 
@@ -444,7 +468,7 @@ Judge findings are opinions and never alter deterministic `runAntiSlop` results.
 
 #### Data Sent to the Remote Provider
 
-The caller explicitly provides the base URL, API key, and model name. The library reads no environment variables and stores no network endpoints.
+The caller provides the base URL, API key and model name. Only the CLI reads them from the environment variables above.
 
 `reasoningEffort` (`"low"`, `"medium"` or `"high"`) is optional. When set, it is sent to the provider as `reasoning_effort` and recorded in the result's provenance. When unset, nothing is sent. Reasoning tokens count against `maxTokens` (default: 2000), so raise `maxTokens` when you set an effort.
 
