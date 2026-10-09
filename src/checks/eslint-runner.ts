@@ -15,6 +15,7 @@ import jsxA11y from "eslint-plugin-jsx-a11y";
 import slop from "eslint-plugin-slop";
 import { noEnvShellCommandRule } from "./no-env-shell-command-rule.js";
 import { noRedundantPresenceCheckRule } from "./no-redundant-presence-check-rule.js";
+import { requireAssertionJustificationRule } from "./require-assertion-justification-rule.js";
 import unicorn from "eslint-plugin-unicorn";
 import useClientPlugin from "eslint-plugin-use-client";
 import barrelFilesPlugin from "eslint-plugin-barrel-files";
@@ -811,6 +812,7 @@ const commentDisciplinePlugin: ESLint.Plugin = {
         };
       },
     },
+    "require-assertion-justification": requireAssertionJustificationRule,
   },
 };
 
@@ -1142,6 +1144,7 @@ function getEslint(): ESLint {
           "comment-discipline/no-syntax-restatement": "warn",
           "comment-discipline/no-comment-ratio-inflation": "warn",
           "comment-discipline/no-essay-comments": "warn",
+          "comment-discipline/require-assertion-justification": "warn",
           "code-smell/no-leaky-conditional-spread": "warn",
         },
       },
@@ -1195,6 +1198,7 @@ function getEslint(): ESLint {
           "comment-discipline/no-syntax-restatement": "off",
           "comment-discipline/no-comment-ratio-inflation": "off",
           "comment-discipline/no-essay-comments": "off",
+          "comment-discipline/require-assertion-justification": "off",
           "id-length": "off",
           // Test formatting & padding (vitest)
           "vitest/padding-around-all": "warn",
@@ -1468,6 +1472,10 @@ const RULE_WHY_AND_SUGGESTIONS: Record<string, { why: string; suggestion?: strin
   "comment-discipline/no-essay-comments": {
     why: "Architectural essay in code: In-depth design debates, benchmark comparisons, and alternative architecture rationales belong in MR descriptions, Jira tickets, or ADRs rather than inline code.",
     suggestion: "Move design justifications and benchmark comparisons to the PR description or an ADR; retain only a concise summary of the active invariant in code.",
+  },
+  "comment-discipline/require-assertion-justification": {
+    why: "Type assertions bypass TypeScript's static type checker and create unverified invariants. Requiring an explicit justification ensures the invariant is documented and auditable.",
+    suggestion: "Add a comment starting with 'SAFETY:' (or configured marker) followed by non-empty text explaining why the assertion is sound, or validate the value at the boundary.",
   },
 };
 

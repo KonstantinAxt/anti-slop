@@ -303,6 +303,7 @@ The eslint check identifies logic errors, complexity, and common shortcuts:
 - comment-discipline/no-syntax-restatement: Comments must not merely restate function/component names, parameter names, or type signatures without domain context.
 - comment-discipline/no-comment-ratio-inflation: Comments must not be disproportionately longer than the attached short implementation function.
 - comment-discipline/no-essay-comments: Code comments must not contain multi-paragraph architectural essays, benchmark debates, or alternative implementation justifications; move these to PR descriptions or ADRs.
+- comment-discipline/require-assertion-justification: Type assertions other than 'as const' must carry an invariant justification comment (e.g. '// SAFETY: <reason>') on the same line or immediately preceding line.
 
 ### Layer Boundaries
 
