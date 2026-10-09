@@ -177,6 +177,10 @@ const RULE_ALIASES: Record<string, string[]> = {
     "slop/no-redundant-presence-check",
     "no-redundant-presence-check",
   ],
+  "slop/no-reflect-escape": [
+    "slop/no-reflect-escape",
+    "no-reflect-escape",
+  ],
 
   // Stale mocks
   "stale-mocks/stale-mock-export": ["stale-mocks/stale-mock-export"],
