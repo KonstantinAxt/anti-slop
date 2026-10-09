@@ -17,6 +17,11 @@ export interface RuleOverride {
   options?: unknown[];
 }
 const ESLINT_NUMERIC_ERROR = 2;
+const DEFAULT_OFF_RULES: Record<string, true> = {
+  "slop/no-unknown-parameters": true,
+  "slop/no-unknown-returns": true,
+};
+
 
 
 const RULE_ALIASES: Record<string, string[]> = {
@@ -177,6 +182,14 @@ const RULE_ALIASES: Record<string, string[]> = {
     "slop/no-redundant-presence-check",
     "no-redundant-presence-check",
   ],
+  "slop/no-unknown-parameters": [
+    "slop/no-unknown-parameters",
+    "no-unknown-parameters",
+  ],
+  "slop/no-unknown-returns": [
+    "slop/no-unknown-returns",
+    "no-unknown-returns",
+  ],
 
   // Stale mocks
   "stale-mocks/stale-mock-export": ["stale-mocks/stale-mock-export"],
@@ -297,6 +310,9 @@ export function applyRepoRuleGuard(
   for (const finding of findings) {
     const override = getRepoOverrideForRule(repoRules, finding.rule);
     if (!override) {
+      if (DEFAULT_OFF_RULES[finding.rule]) {
+        continue;
+      }
       result.push(finding);
       continue;
     }
