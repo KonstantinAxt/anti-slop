@@ -456,66 +456,68 @@ describe("AntiSlop Core Runner", () => {
     sandbox.cleanup();
   });
 
-  it("executes runAntiSlop across various check filter combinations", async () => {
-    const sandbox = createSandbox("temp-run-antislop-filters");
-    const f1 = path.join(sandbox.dir, "f1.ts");
-    const f2 = path.join(sandbox.dir, "f2.ts");
-    fs.writeFileSync(f1, "export const a = 1;");
-    fs.writeFileSync(f2, "export const b = 2;");
+  // Each filter case runs a scan, so each gets its own timeout budget instead of sharing one
+  describe("check filter combinations", () => {
+    let sandbox: { dir: string; cleanup: () => void };
+    let f1: string;
+    let f2: string;
 
-    // 1. Single file vs two files (tests targetFiles.length > 1 jscpd branch)
-    const resSingle = await runAntiSlop({
-      cwd: sandbox.dir,
-      files: [f1],
-      checks: ["syntax"],
+    beforeAll(() => {
+      sandbox = createSandbox("temp-run-antislop-filters");
+      f1 = path.join(sandbox.dir, "f1.ts");
+      f2 = path.join(sandbox.dir, "f2.ts");
+      fs.writeFileSync(f1, "export const a = 1;");
+      fs.writeFileSync(f2, "export const b = 2;");
     });
-    expect(resSingle.passed).toBe(true);
-    expect(resSingle.totalFilesChecked).toBe(1);
-    expect(resSingle.durationMs).toBeGreaterThanOrEqual(0);
 
-    const resMultiple = await runAntiSlop({
-      cwd: sandbox.dir,
-      files: [f1, f2],
-      checks: ["base"],
+    afterAll(() => {
+      sandbox.cleanup();
     });
-    expect(resMultiple.passed).toBe(true);
-    expect(resMultiple.totalFilesChecked).toBe(2);
 
-    // 2. Empty checks array (defaults to runBaseChecks = true)
-    const resEmptyChecks = await runAntiSlop({
-      cwd: sandbox.dir,
-      files: [f1],
-      checks: [],
+    it("skips duplication analysis for a single file under the syntax filter", async () => {
+      const result = await runAntiSlop({ cwd: sandbox.dir, files: [f1], checks: ["syntax"] });
+
+      expect(result.passed).toBe(true);
+      expect(result.totalFilesChecked).toBe(1);
+      expect(result.checks?.jscpd?.status).toBe("skipped");
     });
-    expect(resEmptyChecks.passed).toBe(true);
 
-    // 3. lint filter
-    const resLint = await runAntiSlop({
-      cwd: sandbox.dir,
-      files: [f1],
-      checks: ["lint"],
+    it("runs duplication analysis for two files under the base filter", async () => {
+      const result = await runAntiSlop({ cwd: sandbox.dir, files: [f1, f2], checks: ["base"] });
+
+      expect(result.passed).toBe(true);
+      expect(result.totalFilesChecked).toBe(2);
+      expect(result.checks?.jscpd?.status).toBe("completed");
     });
-    expect(resLint.passed).toBe(true);
 
-    // 4. CRAP check filter with entry verification
-    const resCrap = await runAntiSlop({
-      cwd: sandbox.dir,
-      files: [f1],
-      checks: ["crap"],
-      crapThreshold: 50,
+    it("runs base checks when the checks array is empty", async () => {
+      const result = await runAntiSlop({ cwd: sandbox.dir, files: [f1], checks: [] });
+
+      expect(result.passed).toBe(true);
+      expect(result.checks?.eslint?.status).toBe("completed");
     });
-    expect(resCrap.crapEntries).toBeDefined();
 
-    // 5. PR size check filter
-    const resPr = await runAntiSlop({
-      cwd: sandbox.dir,
-      files: [f1],
-      checks: ["pr-size"],
-      since: "HEAD",
+    it("runs base checks under the lint filter", async () => {
+      const result = await runAntiSlop({ cwd: sandbox.dir, files: [f1], checks: ["lint"] });
+
+      expect(result.passed).toBe(true);
+      expect(result.checks?.eslint?.status).toBe("completed");
     });
-    expect(resPr.passed).toBe(true);
 
-    sandbox.cleanup();
+    it("runs only CRAP analysis under the crap filter", async () => {
+      const result = await runAntiSlop({ cwd: sandbox.dir, files: [f1], checks: ["crap"], crapThreshold: 50 });
+
+      expect(result.checks?.crap?.status).toBe("completed");
+      expect(result.checks?.eslint?.status).toBe("skipped");
+    });
+
+    it("runs only the PR size check under the pr-size filter", async () => {
+      const result = await runAntiSlop({ cwd: sandbox.dir, files: [f1], checks: ["pr-size"], since: "HEAD" });
+
+      expect(result.passed).toBe(true);
+      expect(result.checks?.["pr-size"]?.status).toBe("completed");
+      expect(result.checks?.eslint?.status).toBe("skipped");
+    });
   });
 
   it("yields exactly one finding for an unused variable in full run (#105)", async () => {
