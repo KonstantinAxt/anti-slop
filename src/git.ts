@@ -1,4 +1,4 @@
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync, execSync, spawnSync } from "node:child_process";
 import * as path from "node:path";
 
 const CODE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
@@ -32,8 +32,12 @@ export function getDiffFilesSince(cwd: string, ref: string): string[] {
   return runGitDiff(cwd, `${normalizedRef}...HEAD --name-only --diff-filter=ACMR`);
 }
 
-// Query git repository for tracked and untracked code files respecting .gitignore
+// Query git repository for tracked and untracked code files respecting .gitignore.
+// Returns null outside a repository or when the directory itself is ignored, so the caller walks the filesystem.
 export function getTrackedCodeFiles(dir: string, customIgnored?: Set<string>): string[] | null {
+  // An explicitly targeted ignored directory would otherwise list as empty instead of failing
+  if (spawnSync("git", ["-C", dir, "check-ignore", "-q", "."]).status === 0) return null;
+
   try {
     const stdout = execFileSync(
       "git",
@@ -47,7 +51,6 @@ export function getTrackedCodeFiles(dir: string, customIgnored?: Set<string>): s
     return stdout
       .split("\0")
       .filter((line) => {
-        if (!line) return false;
         if (!CODE_EXTENSIONS.has(path.extname(line))) return false;
         if (!customIgnored) return true;
         const segments = line.split("/");

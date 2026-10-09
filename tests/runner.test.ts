@@ -385,6 +385,24 @@ describe("AntiSlop Core Runner", () => {
     sandbox.cleanup();
   });
 
+  it("scans an explicitly targeted directory that git ignores", () => {
+    const sandbox = createSandbox("temp-git-ignored-target-sandbox");
+    const ignoredDir = path.join(sandbox.dir, "generated");
+    const ignoredFile = path.join(ignoredDir, "client.ts");
+
+    fs.mkdirSync(ignoredDir, { recursive: true });
+
+    fs.writeFileSync(ignoredFile, "export const a = 1;");
+
+    fs.writeFileSync(path.join(sandbox.dir, ".gitignore"), "generated/\n");
+
+    execSync("git init -q", { cwd: sandbox.dir });
+
+    expect(resolveTargetFiles(sandbox.dir, { files: [ignoredDir] })).toEqual([ignoredFile]);
+
+    sandbox.cleanup();
+  });
+
   it("resolves default cwd scan respecting git-ignored subfolders", () => {
     const sandbox = createSandbox("temp-git-ignored-default-sandbox");
     const normalFile = path.join(sandbox.dir, "src/index.ts");
