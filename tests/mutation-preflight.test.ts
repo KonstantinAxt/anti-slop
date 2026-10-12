@@ -226,6 +226,8 @@ describe("Mutation Preflight & Capacity Estimator", () => {
     const output = formatTerminalPreflight(report);
 
     expect(output).toContain("⚡ Anti-Slop Mutation Preflight & Capacity Estimate");
+
+    expect(output).not.toContain("Nothing will be mutated.");
     expect(output).toContain("src/formatters.ts");
     expect(output).toContain("System Resources & VSCode Safety");
     expect(output).toContain("Current Load:");
