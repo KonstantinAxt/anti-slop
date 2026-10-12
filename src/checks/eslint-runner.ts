@@ -15,6 +15,7 @@ import jsxA11y from "eslint-plugin-jsx-a11y";
 import slop from "eslint-plugin-slop";
 import { noEnvShellCommandRule } from "./no-env-shell-command-rule.js";
 import { noRedundantPresenceCheckRule } from "./no-redundant-presence-check-rule.js";
+import { noReflectEscapeRule } from "./no-reflect-escape-rule.js";
 import { requireAssertionJustificationRule } from "./require-assertion-justification-rule.js";
 import { noUnknownReturnsRule } from "./strict-unknown-rules.js";
 import unicorn from "eslint-plugin-unicorn";
@@ -943,6 +944,7 @@ function getEslint(): ESLint {
         "no-env-shell-command": noEnvShellCommandRule,
         "no-redundant-presence-check": noRedundantPresenceCheckRule,
         "no-unknown-returns": noUnknownReturnsRule,
+        "no-reflect-escape": noReflectEscapeRule,
       },
     },
     unicorn,
@@ -1042,6 +1044,7 @@ function getEslint(): ESLint {
           "slop/no-env-shell-command": "error",
           "slop/no-redundant-presence-check": "error",
           "slop/no-unknown-returns": "error",
+          "slop/no-reflect-escape": "warn",
           "no-warning-comments": [
             "error",
             {
@@ -1407,6 +1410,10 @@ const RULE_WHY_AND_SUGGESTIONS: Record<string, { why: string; suggestion?: strin
   "slop/no-unknown-returns": {
     why: "Type evidence hygiene: Returning 'unknown', 'Promise<unknown>', or 'PromiseLike<unknown>' discards type evidence at contract boundaries and defers validation to callers (same-file AST only).",
     suggestion: "Return a concrete domain type, generic return contract, or parsed schema result instead of 'unknown'.",
+  },
+  "slop/no-reflect-escape": {
+    why: "Type evidence hygiene: Reflect.get and Reflect.apply bypass static property and call checks, so a typo or contract change is no longer caught by the compiler.",
+    suggestion: "Use typed property access, typed function calls, or parse untrusted input at the boundary with a schema.",
   },
   "use-client/require-use-client": {
     why: "Next.js / RSC architecture: Components without hooks, event handlers, or browser APIs should remain React Server Components to avoid inflating client bundles.",
