@@ -217,7 +217,7 @@ The eslint check identifies logic errors, complexity, and common shortcuts:
 - sonarjs/no-duplicated-branches: You must not duplicate identical code blocks across branches.
 - sonarjs/no-identical-expressions: You must not compare an expression to the same expression.
 - sonarjs/no-duplicate-string: You must not repeat a string literal four or more times (suppressed in test/spec files).
-- @typescript-eslint/consistent-type-assertions: You must not cast values with as Type syntax.
+- @typescript-eslint/consistent-type-assertions: You must not cast values with `as Type` or `<Type>value` syntax unless the assertion has a valid `SAFETY:` justification on the same line or immediately preceding line. Such assertions pass this generic rule, while chained assertions remain forbidden.
 - @typescript-eslint/explicit-function-return-type: Top-level functions and methods must have explicit return type annotations (suppressed in test/spec files).
 - @typescript-eslint/no-magic-numbers: You must declare named constants before you use literal numbers in business logic. Numbers that build a module-level SCREAMING_CASE `const` (for example `const TIMEOUT_MS = 10 * 60 * 1000`) and the indentation argument of `JSON.stringify` are allowed.
 - @typescript-eslint/no-unused-vars: You must remove declared variables, imports, and parameters that are never read.
@@ -309,7 +309,7 @@ The eslint check identifies logic errors, complexity, and common shortcuts:
 - comment-discipline/no-syntax-restatement: Comments must not merely restate function/component names, parameter names, or type signatures without domain context.
 - comment-discipline/no-comment-ratio-inflation: Comments must not be disproportionately longer than the attached short implementation function.
 - comment-discipline/no-essay-comments: Code comments must not contain multi-paragraph architectural essays, benchmark debates, or alternative implementation justifications; move these to PR descriptions or ADRs.
-- comment-discipline/require-assertion-justification: Type assertions other than 'as const' must carry an invariant justification comment (e.g. '// SAFETY: <reason>') on the same line or immediately preceding line.
+- comment-discipline/require-assertion-justification: Type assertions other than 'as const' must carry an invariant justification comment (e.g. '// SAFETY: <reason>') on the same line or immediately preceding line; a valid comment also silences the generic consistent-type-assertions warning.
 
 ### Layer Boundaries
 

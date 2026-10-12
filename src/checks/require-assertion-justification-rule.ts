@@ -1,7 +1,7 @@
 import type { Rule } from "eslint";
 import type { Comment as ESTreeComment, Node as ESTreeNode } from "estree";
 
-const DEFAULT_MARKERS: readonly string[] = ["SAFETY:"] as const;
+export const DEFAULT_ASSERTION_JUSTIFICATION_MARKERS: readonly string[] = ["SAFETY:"] as const;
 
 export function isAstNode(value: unknown): value is ESTreeNode {
   return typeof value === "object" && value !== null && "type" in value;
@@ -127,7 +127,7 @@ export const requireAssertionJustificationRule: Rule.RuleModule = {
     const options = context.options[0];
     const markers = options && Array.isArray(options.markers)
       ? options.markers
-      : DEFAULT_MARKERS;
+      : DEFAULT_ASSERTION_JUSTIFICATION_MARKERS;
 
     function isConst(node: ESTreeNode): boolean {
       const ann: unknown = "typeAnnotation" in node ? node.typeAnnotation : null;
