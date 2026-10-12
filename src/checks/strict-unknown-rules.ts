@@ -20,7 +20,6 @@ export interface TsAstNode extends ESTree.BaseNode {
   body?: TsAstNode[] | undefined;
 }
 
-const MAX_TYPE_RECURSION_DEPTH = 10;
 const FUNCTION_NODE_TYPES = [
   "FunctionDeclaration",
   "FunctionExpression",
@@ -51,45 +50,36 @@ function collectTypeAliases(program: TsAstNode): Map<string, TsAstNode> {
   if (!Array.isArray(program.body)) return aliases;
 
   for (const stmt of program.body) {
-    const decl = stmt.type === "ExportNamedDeclaration" && isAstNode(stmt.declaration) ? stmt.declaration : stmt;
-    if (decl.type === "TSTypeAliasDeclaration" && isAstNode(decl.id) && decl.id.name && isAstNode(decl.typeAnnotation)) {
-      aliases.set(decl.id.name, decl.typeAnnotation);
-    }
+    if (!isAstNode(stmt)) continue;
+    const declaration = stmt.type === "ExportNamedDeclaration" ? stmt.declaration : stmt;
+    if (!isAstNode(declaration) || declaration.type !== "TSTypeAliasDeclaration") continue;
+    if (!isAstNode(declaration.id) || !declaration.id.name || !isAstNode(declaration.typeAnnotation)) continue;
+
+    aliases.set(declaration.id.name, declaration.typeAnnotation);
   }
 
   return aliases;
 }
 
 function getTypeArguments(node: TsAstNode): TsAstNode[] {
-  if (isAstNode(node.typeArguments)) {
-    if (Array.isArray(node.typeArguments.params)) return node.typeArguments.params.filter(isAstNode);
-    if (Array.isArray(node.typeArguments)) return node.typeArguments.filter(isAstNode);
-  }
-  if (isAstNode(node.typeParameters) && Array.isArray(node.typeParameters.params)) {
-    return node.typeParameters.params.filter(isAstNode);
-  }
+  const argumentsNode = node.typeArguments ?? node.typeParameters;
+  if (Array.isArray(argumentsNode)) return argumentsNode;
+  if (argumentsNode && Array.isArray(argumentsNode.params)) return argumentsNode.params;
 
   return [];
 }
 
-function typeContainsUnknown(
-  rawNode: TsAstNode | null | undefined,
-  typeAliases: Map<string, TsAstNode>,
-  depth = 0,
-): boolean {
-  if (depth > MAX_TYPE_RECURSION_DEPTH) return false;
+function typeContainsUnknown(rawNode: TsAstNode | null | undefined, typeAliases: Map<string, TsAstNode>): boolean {
   const node = unwrapParenthesizedType(rawNode);
   if (!node) return false;
   if (node.type === "TSUnknownKeyword") return true;
 
-  if (node.type === "TSUnionType" && Array.isArray(node.types)) {
-    return node.types.some((elem) => isAstNode(elem) && typeContainsUnknown(elem, typeAliases, depth + 1));
-  }
+  if (node.type === "TSUnionType" && Array.isArray(node.types)) return node.types.some((elem) => typeContainsUnknown(elem, typeAliases));
 
-  if (node.type === "TSTypeReference" && isAstNode(node.typeName) && node.typeName.name) {
+  if (node.type === "TSTypeReference" && node.typeName?.name) {
     const alias = typeAliases.get(node.typeName.name);
 
-    return alias !== undefined && typeContainsUnknown(alias, typeAliases, depth + 1);
+    return alias !== undefined && typeContainsUnknown(alias, typeAliases);
   }
 
   return false;
@@ -146,60 +136,42 @@ function checkFunctionParameters(
   }
 }
 
-function checkPromiseReference(
-  node: TsAstNode,
-  typeAliases: Map<string, TsAstNode>,
-  depth: number,
-): string | null {
+function checkPromiseReference(node: TsAstNode, typeAliases: Map<string, TsAstNode>): string | null {
   const name = node.typeName?.name;
-  if (!name || (name !== "Promise" && name !== "PromiseLike")) return null;
+  if (name !== "Promise" && name !== "PromiseLike") return null;
   const args = getTypeArguments(node);
 
-  return args[0] && typeContainsUnknown(args[0], typeAliases, depth + 1) ? `${name}<unknown>` : null;
+  return args[0] && typeContainsUnknown(args[0], typeAliases) ? `${name}<unknown>` : null;
 }
 
-function checkUnionReturnType(
-  node: TsAstNode,
-  typeAliases: Map<string, TsAstNode>,
-  depth: number,
-): string | null {
+function checkUnionReturnType(node: TsAstNode, typeAliases: Map<string, TsAstNode>): string | null {
   if (node.type !== "TSUnionType" || !Array.isArray(node.types)) return null;
   for (const member of node.types) {
-    if (!isAstNode(member)) continue;
-    const found = checkUnknownReturnType(member, typeAliases, depth + 1);
+    const found = checkUnknownReturnType(member, typeAliases);
     if (found) return found;
   }
 
   return null;
 }
 
-function checkReferenceReturnType(
-  node: TsAstNode,
-  typeAliases: Map<string, TsAstNode>,
-  depth: number,
-): string | null {
+function checkReferenceReturnType(node: TsAstNode, typeAliases: Map<string, TsAstNode>): string | null {
   if (node.type !== "TSTypeReference" || !node.typeName?.name) return null;
-  const promiseMatch = checkPromiseReference(node, typeAliases, depth);
+  const promiseMatch = checkPromiseReference(node, typeAliases);
   if (promiseMatch) return promiseMatch;
   const alias = typeAliases.get(node.typeName.name);
 
-  return alias ? checkUnknownReturnType(alias, typeAliases, depth + 1) : null;
+  return alias ? checkUnknownReturnType(alias, typeAliases) : null;
 }
 
-function checkUnknownReturnType(
-  rawNode: TsAstNode | null | undefined,
-  typeAliases: Map<string, TsAstNode>,
-  depth = 0,
-): string | null {
-  if (depth > MAX_TYPE_RECURSION_DEPTH) return null;
+function checkUnknownReturnType(rawNode: TsAstNode | null | undefined, typeAliases: Map<string, TsAstNode>): string | null {
   const node = unwrapParenthesizedType(rawNode);
   if (!node) return null;
   if (node.type === "TSUnknownKeyword") return "unknown";
 
-  const refMatch = checkReferenceReturnType(node, typeAliases, depth);
+  const refMatch = checkReferenceReturnType(node, typeAliases);
   if (refMatch) return refMatch;
 
-  return checkUnionReturnType(node, typeAliases, depth);
+  return checkUnionReturnType(node, typeAliases);
 }
 
 function checkFunctionReturnType(

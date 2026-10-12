@@ -50,16 +50,84 @@ describe("slop/no-unknown-parameters", () => {
     expect(findings.filter((f) => f.rule === PARAM_RULE)).toHaveLength(0);
   });
 
-  it("flags non-subject parameter while allowing type predicate subject", async () => {
-    const code = "export function match(tag: unknown, item: unknown): item is string { return true; }";
+  it.each([
+    ["parameter property", "export class H { constructor(public data: unknown) {} }", "data"],
+    ["nested parameter alias", "type A = unknown; type B = A; export function f(value: B): void {}", "value"],
+    ["union alias", "type A = string | unknown; export function f(value: A): void {}", "value"],
+  ])("reports nested unknown parameter types: %s", async (_, code, expectedName) => {
     const findings = await checkWithEslint("src/test.ts", code, { [PARAM_RULE]: "error" });
-    const match = findings.filter((f) => f.rule === PARAM_RULE);
+    const match = findings.find((f) => f.rule === PARAM_RULE);
 
-    expect(match).toHaveLength(1);
-    expect(match[0]?.message).toContain("'tag'");
-    expect(match[0]?.line).toBe(1);
+    expect(match?.message).toContain(`parameter '${expectedName}'`);
+  });
+
+  it.each([
+    ["parameter alias chain", "type A = unknown; type B = A; export function f(value: B): void {}", 1],
+    ["plain array context", "export function f(value: unknown[]): void {}", 0],
+    ["rest array context", "export function f(...values: unknown[]): void {}", 0],
+  ])("evaluates nested parameter types: %s", async (_, code, expectedCount) => {
+    const findings = await checkWithEslint("src/test.ts", code, { [PARAM_RULE]: "error" });
+
+    expect(findings.filter((f) => f.rule === PARAM_RULE)).toHaveLength(expectedCount);
+  });
+  it("reads aliases from program statements", async () => {
+    const code = "type A = unknown; export function f(value: A): void {}";
+    const findings = await checkWithEslint("src/test.ts", code, { [PARAM_RULE]: "error" });
+
+    expect(findings.filter((f) => f.rule === PARAM_RULE)).toHaveLength(1);
+  });
+
+  it("ignores same-file aliases that do not contain unknown", async () => {
+    const code = "type A = string; export function f(value: A): void {}";
+    const findings = await checkWithEslint("src/test.ts", code, { [PARAM_RULE]: "error" });
+
+    expect(findings.filter((f) => f.rule === PARAM_RULE)).toHaveLength(0);
+  });
+
+  it("ignores unknown nested outside the parameter's union", async () => {
+    const code = "export function f(value: unknown[]): void {}";
+    const findings = await checkWithEslint("src/test.ts", code, { [PARAM_RULE]: "error" });
+
+    expect(findings.filter((f) => f.rule === PARAM_RULE)).toHaveLength(0);
   });
 });
+describe("slop/no-unknown-returns edge cases", () => {
+  it.each([
+    ["union member", "export function f(): string | unknown { return 'ok'; }", "'unknown'"],
+    ["aliased promise argument", "type A = unknown; export function f(): Promise<A> { return Promise.resolve(1); }", "'Promise<unknown>'"],
+    ["promise-like alias", "type R = PromiseLike<unknown>; export function f(): R { return Promise.resolve(1); }", "'PromiseLike<unknown>'"],
+    ["parenthesized unknown", "export function f(): (unknown) { return 1; }", "'unknown'"],
+  ])("finds unknown in return edge case: %s", async (_, code, expectedType) => {
+    const findings = await checkWithEslint("src/test.ts", code, { [RETURN_RULE]: "error" });
+    const match = findings.filter((f) => f.rule === RETURN_RULE);
+
+    expect(match).toHaveLength(1);
+    expect(match[0]?.message).toContain(`Avoid ${expectedType}`);
+  });
+
+  it.each([
+    ["unrelated generic", "export function f(): Box<unknown> { return {} as Box<unknown>; }", 0],
+    ["same-file concrete alias", "type R = string; export function f(): R { return 'ok'; }", 0],
+    ["empty body", "export function f(): number {}", 0],
+  ])("allows return type outside the rule: %s", async (_, code, expectedCount) => {
+    const findings = await checkWithEslint("src/test.ts", code, { [RETURN_RULE]: "error" });
+
+    expect(findings.filter((f) => f.rule === RETURN_RULE)).toHaveLength(expectedCount);
+  });
+});
+describe("slop/no-unknown-returns promise boundaries", () => {
+  it.each([
+    ["unrelated type argument", "export function f(): Box<unknown> { return {} as Box<unknown>; }", 0],
+    ["promise without argument", "export function f(): Promise { return Promise.resolve(1); }", 0],
+    ["promise second unknown argument", "export function f(): Promise<string, unknown> { return Promise.resolve(1); }", 0],
+    ["promise first unknown argument", "export function f(): Promise<unknown, string> { return Promise.resolve(1); }", 1],
+  ])("checks only first argument of known promise: %s", async (_, code, expectedCount) => {
+    const findings = await checkWithEslint("src/test.ts", code, { [RETURN_RULE]: "error" });
+
+    expect(findings.filter((f) => f.rule === RETURN_RULE)).toHaveLength(expectedCount);
+  });
+});
+
 
 describe("slop/no-unknown-returns", () => {
   it.each([
