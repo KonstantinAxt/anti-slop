@@ -566,7 +566,6 @@ export function cleanupStrykerSandbox(cwd: string): void {
 interface MutationPreconditions {
   options?: SynthesizedStrykerConfig;
   errorFindings?: Finding[];
-  skip?: boolean;
 }
 
 export function checkMemoryThreshold(freeMem: number, totalMem: number, cwd: string): Finding | null {
@@ -616,7 +615,7 @@ export function validateMutationPreconditions(
 ): MutationPreconditions {
   const mutateFiles = filterProductionFilesForMutation(cwd, targetFiles);
   if (targetFiles && targetFiles.length > 0 && mutateFiles.length === 0) {
-    return { skip: true };
+    return {};
   }
 
   const effectiveMaxFiles =
@@ -625,14 +624,16 @@ export function validateMutationPreconditions(
       : MAX_MUTATION_FILES;
 
   const lineRanges = since ? getChangedLineRangesSince(cwd, since) : undefined;
-  const changedFiles = lineRanges ? mutateFiles.filter((file) => lineRanges.has(path.resolve(cwd, file))) : mutateFiles;
-  if (lineRanges && changedFiles.length === 0) return { skip: true };
   const scopedMutateFiles = lineRanges
-    ? changedFiles.flatMap((file) =>
+    ? mutateFiles.flatMap((file) =>
         (lineRanges.get(path.resolve(cwd, file)) ?? []).map((range) => `${file}:${range.start}-${range.end}`)
       )
     : mutateFiles;
-  const scopeError = checkScopeLimit(changedFiles.length, cwd, effectiveMaxFiles);
+  if (scopedMutateFiles.length === 0) return {};
+  const scopedFileCount = lineRanges
+    ? mutateFiles.filter((file) => lineRanges.has(path.resolve(cwd, file))).length
+    : mutateFiles.length;
+  const scopeError = checkScopeLimit(scopedFileCount, cwd, effectiveMaxFiles);
   if (scopeError) {
     return { errorFindings: [scopeError] };
   }

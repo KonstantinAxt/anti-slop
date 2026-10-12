@@ -115,7 +115,8 @@ describe("Mutation Preflight & Capacity Estimator", () => {
     const source = path.join(tempDir, "calculator.ts");
     const git = (...args: string[]): string => execFileSync("git", args, { cwd: tempDir, encoding: "utf-8" });
     fs.writeFileSync(source, baseSource);
-    fs.writeFileSync(path.join(tempDir, "other.ts"), "export const other = 1;\n");
+    const otherFile = path.join(tempDir, "other.ts");
+    fs.writeFileSync(otherFile, "export const other = 1;\nexport const extra = 2;\n");
     git("init", "-q");
     git("config", "user.email", "test@example.invalid");
     git("config", "user.name", "Test");
@@ -123,6 +124,7 @@ describe("Mutation Preflight & Capacity Estimator", () => {
     git("commit", "-qm", "base");
     const base = git("rev-parse", "HEAD").trim();
     fs.writeFileSync(source, changedSource);
+    fs.writeFileSync(otherFile, "export const other = 1;\n");
     git("add", ".");
     git("commit", "-qm", "change");
 
@@ -146,14 +148,17 @@ describe("Mutation Preflight & Capacity Estimator", () => {
 
     try {
       const report = await calculateMutationPreflight({ cwd: tempDir, since: base, concurrency: 1, maxMutationFiles: 1 });
-      const fullReport = await calculateMutationPreflight({ cwd: tempDir, files: [source], concurrency: 1, maxMutationFiles: 0 });
+      const fullReport = await calculateMutationPreflight({ cwd: tempDir, files: [source], concurrency: 1, maxMutationFiles: -1 });
+      const oracle = path.join(tempDir, "changed-lines-only.ts");
+      fs.writeFileSync(oracle, `${changed[1]}\n${changed[3]}\n`);
+      const oracleReport = await calculateMutationPreflight({ cwd: tempDir, files: [oracle], concurrency: 1 });
       const changedLineMutants = report.fileEstimates[0]?.estimatedMutants ?? 0;
 
       expect(report.fileEstimates.map((estimate) => [estimate.file, estimate.lines, estimate.cachedMutants])).toEqual([["calculator.ts", 2, 2]]);
 
       expect(report.isScopeTooBroad).toBe(false);
 
-      expect(changedLineMutants).toBeGreaterThan(0);
+      expect(changedLineMutants).toBe(oracleReport.fileEstimates[0]?.estimatedMutants);
 
       expect(changedLineMutants).toBeLessThan(fullReport.fileEstimates[0]?.estimatedMutants ?? 0);
 
@@ -166,7 +171,7 @@ describe("Mutation Preflight & Capacity Estimator", () => {
   });
 
   it("falls back to a per-line estimate limited to changed non-blank lines when parsing fails", async () => {
-    const { tempDir, base, source } = createPreflightRepo("const = ;\nlet x = ;\n", "const = ;\nlet y = ;\n\n");
+    const { tempDir, base, source } = createPreflightRepo("const = ;\nlet x = ;\n", "const = ;\nlet y = ;\n\n\n");
 
     try {
       const report = await calculateMutationPreflight({ cwd: tempDir, since: base, concurrency: 1 });
