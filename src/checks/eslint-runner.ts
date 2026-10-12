@@ -16,6 +16,7 @@ import slop from "eslint-plugin-slop";
 import { noEnvShellCommandRule } from "./no-env-shell-command-rule.js";
 import { noRedundantPresenceCheckRule } from "./no-redundant-presence-check-rule.js";
 import { requireAssertionJustificationRule } from "./require-assertion-justification-rule.js";
+import { noUnknownReturnsRule } from "./strict-unknown-rules.js";
 import unicorn from "eslint-plugin-unicorn";
 import useClientPlugin from "eslint-plugin-use-client";
 import barrelFilesPlugin from "eslint-plugin-barrel-files";
@@ -941,6 +942,7 @@ function getEslint(): ESLint {
         ...slop.rules,
         "no-env-shell-command": noEnvShellCommandRule,
         "no-redundant-presence-check": noRedundantPresenceCheckRule,
+        "no-unknown-returns": noUnknownReturnsRule,
       },
     },
     unicorn,
@@ -1039,6 +1041,7 @@ function getEslint(): ESLint {
           "slop/no-jargon": "warn",
           "slop/no-env-shell-command": "error",
           "slop/no-redundant-presence-check": "error",
+          "slop/no-unknown-returns": "error",
           "no-warning-comments": [
             "error",
             {
@@ -1390,11 +1393,7 @@ export async function checkWithEslint(
 
   const filteredFindings = filterMemoizedReactPerfFindings(findings, filePath, code);
 
-  if (repoOverrides && Object.keys(repoOverrides).length > 0) {
-    return applyRepoRuleGuard(filteredFindings, repoOverrides);
-  }
-
-  return filteredFindings;
+  return applyRepoRuleGuard(filteredFindings, repoOverrides ?? {});
 }
 const RULE_WHY_AND_SUGGESTIONS: Record<string, { why: string; suggestion?: string }> = {
   "slop/no-env-shell-command": {
@@ -1404,6 +1403,10 @@ const RULE_WHY_AND_SUGGESTIONS: Record<string, { why: string; suggestion?: strin
   "slop/no-redundant-presence-check": {
     why: "TypeScript does not narrow Map#get after Map#has (microsoft/TypeScript#13086). Checking presence before get introduces redundant hash lookups or unreachable error guards.",
     suggestion: "Look up the key once with .get() and narrow the result or use nullish coalescing (??).",
+  },
+  "slop/no-unknown-returns": {
+    why: "Type evidence hygiene: Returning 'unknown', 'Promise<unknown>', or 'PromiseLike<unknown>' discards type evidence at contract boundaries and defers validation to callers (same-file AST only).",
+    suggestion: "Return a concrete domain type, generic return contract, or parsed schema result instead of 'unknown'.",
   },
   "use-client/require-use-client": {
     why: "Next.js / RSC architecture: Components without hooks, event handlers, or browser APIs should remain React Server Components to avoid inflating client bundles.",
