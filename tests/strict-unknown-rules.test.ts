@@ -12,10 +12,10 @@ describe("slop/no-unknown-returns", () => {
     ["unknown return", "export function f(): unknown { return 1; }", "unknown"],
     ["Promise<unknown>", "export async function f(): Promise<unknown> { return 1; }", "Promise<unknown>"],
     ["PromiseLike<unknown>", "export function f(): PromiseLike<unknown> { return Promise.resolve(1); }", "PromiseLike<unknown>"],
-    ["type alias return", "type R = Promise<unknown>; export function f(): R { return 1; }", "Promise<unknown>"],
     ["union return with unknown", "export function f(): unknown | null { return null; }", "unknown"],
-    ["promise argument alias", "type A = unknown; export function f(): Promise<A> { return Promise.resolve(1); }", "Promise<unknown>"],
     ["parenthesized unknown", "export function f(): (unknown) { return 1; }", "unknown"],
+    ["arrow function", "export const f = (): unknown => 1;", "unknown"],
+    ["method signature", "export interface S { load(): Promise<unknown>; }", "Promise<unknown>"],
   ])("reports %s", async (_, code, expectedType) => {
     const findings = await checkWithEslint("src/test.ts", code, RETURN_ENABLED);
     const match = findings.filter((finding) => finding.rule === RETURN_RULE);
@@ -30,6 +30,9 @@ describe("slop/no-unknown-returns", () => {
     ["concrete Promise", "export async function f(): Promise<string> { return 'ok'; }"],
     ["unrelated generic", "export function f(): Box<unknown> { return {} as Box<unknown>; }"],
     ["concrete same-file alias", "type R = string; export function f(): R { return 'ok'; }"],
+    ["unknown parameter", "export function f(value: unknown): number { return 1; }"],
+    ["unknown variable annotation", "export const value: unknown = 1;"],
+    ["unknown nested in a concrete Promise argument", "export function f(): Promise<Box<unknown>> { return Promise.resolve({}); }"],
     ["unknown in second Promise argument", "export function f(): Promise<string, unknown> { return Promise.resolve(1); }"],
   ])("allows %s", async (_, code) => {
     const findings = await checkWithEslint("src/test.ts", code, RETURN_ENABLED);

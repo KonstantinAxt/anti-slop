@@ -22,7 +22,6 @@ const DEFAULT_OFF_RULES: Record<string, true> = {
 };
 
 
-
 const RULE_ALIASES: Record<string, string[]> = {
   // TypeScript checks
   "no-explicit-any": [
@@ -181,9 +180,9 @@ const RULE_ALIASES: Record<string, string[]> = {
     "slop/no-redundant-presence-check",
     "no-redundant-presence-check",
   ],
+  "slop/no-unknown-returns": ["slop/no-unknown-returns", "no-unknown-returns"],
 
   // Stale mocks
-
   "stale-mocks/stale-mock-export": ["stale-mocks/stale-mock-export"],
 
   // Dead code
