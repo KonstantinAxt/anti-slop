@@ -277,14 +277,8 @@ describe("comment-discipline/require-assertion-justification", () => {
     });
 
     it("isPrecedingComment verifies loc and column boundaries", () => {
-      expect(isPrecedingComment({ type: "Line", value: "test" }, [2], [""])).toBe(false);
-      expect(
-        isPrecedingComment(
-          { type: "Line", value: "test", loc: { start: { line: 1, column: 0 }, end: { line: 1, column: 4 } } },
-          [2],
-          ["// test"],
-        ),
-      ).toBe(true);
+      expect(isPrecedingComment({ type: "Line", value: "test", loc: { start: { line: 2, column: 4 }, end: { line: 2, column: 8 } } }, [3], [])).toBe(true);
+      expect(isPrecedingComment({ type: "Line", value: "test" }, [2], [])).toBe(false);
       expect(
         isPrecedingComment(
           { type: "Line", value: "test", loc: { start: { line: 1, column: 7 }, end: { line: 1, column: 11 } } },
