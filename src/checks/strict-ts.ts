@@ -126,7 +126,7 @@ function checkExplicitAny(
       column: character + 1,
       excerpt: node.parent ? node.parent.getText(sourceFile) : node.getText(sourceFile),
       why: "Type safety: Explicit any disables type checking.",
-      suggestion: "Use 'unknown', a concrete domain type, a generic, or a Zod schema validation.",
+      suggestion: "Parse at the boundary with a schema (e.g. Zod), or use a concrete domain type or a generic.",
     };
   }
 
