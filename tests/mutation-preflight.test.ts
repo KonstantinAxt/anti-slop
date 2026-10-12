@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -104,6 +105,98 @@ describe("Mutation Preflight & Capacity Estimator", () => {
       expect(report.fileEstimates).toHaveLength(1);
       expect(report.fileEstimates[0]?.estimatedMutants).toBe(2);
       expect(report.estimatedColdSeconds).toBeGreaterThan(0);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  function createPreflightRepo(baseSource: string, changedSource: string): { tempDir: string; base: string; source: string } {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "preflight-lines-"));
+    const source = path.join(tempDir, "calculator.ts");
+    const git = (...args: string[]): string => execFileSync("git", args, { cwd: tempDir, encoding: "utf-8" });
+    fs.writeFileSync(source, baseSource);
+    const otherFile = path.join(tempDir, "other.ts");
+    fs.writeFileSync(otherFile, "export const other = 1;\nexport const extra = 2;\n");
+    git("init", "-q");
+    git("config", "user.email", "test@example.invalid");
+    git("config", "user.name", "Test");
+    git("add", ".");
+    git("commit", "-qm", "base");
+    const base = git("rev-parse", "HEAD").trim();
+    fs.writeFileSync(source, changedSource);
+    fs.writeFileSync(otherFile, "export const other = 1;\n");
+    git("add", ".");
+    git("commit", "-qm", "change");
+
+    return { tempDir, base, source };
+  }
+
+  it("estimates only changed lines when preflighting a Git diff", async () => {
+    const unchanged = [
+      "export function add(a: number, b: number): number { return a + b; }",
+      "export function sub(a: number, b: number): number { return a - b; }",
+      "export function mul(a: number, b: number): number { return a * b; }",
+      "export function div(a: number, b: number): number { return a / b; }",
+    ];
+    const changed = [unchanged[0], "export function sub(a: number, b: number): number { return a - b - 1; }", unchanged[2], "export function div(a: number, b: number): number { return a / b / 2; }"];
+    const { tempDir, base, source } = createPreflightRepo(`${unchanged.join("\n")}\n`, `${changed.join("\n")}\n`);
+    fs.mkdirSync(path.join(tempDir, "reports/mutation"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempDir, "reports/mutation/stryker-incremental.json"),
+      JSON.stringify({ files: { "calculator.ts": { mutants: [{}, {}] } } })
+    );
+
+    try {
+      const report = await calculateMutationPreflight({ cwd: tempDir, since: base, concurrency: 1, maxMutationFiles: 1 });
+      const fullReport = await calculateMutationPreflight({ cwd: tempDir, files: [source], concurrency: 1, maxMutationFiles: -1 });
+      const oracle = path.join(tempDir, "changed-lines-only.ts");
+      fs.writeFileSync(oracle, `${changed[1]}\n${changed[3]}\n`);
+      const oracleReport = await calculateMutationPreflight({ cwd: tempDir, files: [oracle], concurrency: 1, maxMutationFiles: 0 });
+      const changedLineMutants = report.fileEstimates[0]?.estimatedMutants ?? 0;
+
+      expect(report.fileEstimates.map((estimate) => [estimate.file, estimate.lines, estimate.cachedMutants])).toEqual([["calculator.ts", 2, 2]]);
+
+      expect(report.isScopeTooBroad).toBe(false);
+
+      expect(changedLineMutants).toBe(oracleReport.fileEstimates[0]?.estimatedMutants);
+
+      expect(changedLineMutants).toBeLessThan(fullReport.fileEstimates[0]?.estimatedMutants ?? 0);
+
+      expect(fullReport.fileEstimates[0]?.lines).toBe(5);
+
+      expect(fullReport.isScopeTooBroad).toBe(false);
+
+      expect(oracleReport.isScopeTooBroad).toBe(false);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to a per-line estimate limited to changed non-blank lines when parsing fails", async () => {
+    const { tempDir, base, source } = createPreflightRepo("const = ;\nlet x = ;\n", "const = ;\nlet y = ;\n  \n\n");
+
+    try {
+      const report = await calculateMutationPreflight({ cwd: tempDir, since: base, concurrency: 1 });
+      const fullReport = await calculateMutationPreflight({ cwd: tempDir, files: [source], concurrency: 1 });
+
+      expect(report.fileEstimates[0]?.estimatedMutants).toBe(1);
+
+      expect(fullReport.fileEstimates[0]?.estimatedMutants).toBe(2);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("adds up the fallback estimate across separate changed hunks", async () => {
+    const { tempDir, base } = createPreflightRepo(
+      "let a = ;\nlet b = ;\nlet c = ;\nlet d = ;\n",
+      "let a = ;\nlet B = ;\nlet c = ;\nlet D = ;\n"
+    );
+
+    try {
+      const report = await calculateMutationPreflight({ cwd: tempDir, since: base, concurrency: 1 });
+
+      expect(report.fileEstimates[0]?.estimatedMutants).toBe(2);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }

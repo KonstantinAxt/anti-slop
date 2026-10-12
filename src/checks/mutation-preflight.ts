@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Instrumenter } from "@stryker-mutator/instrumenter";
-import { getDiffFilesSince, getStagedFiles } from "../git.js";
+import { getChangedLineRangesSince, getDiffFilesSince, getStagedFiles, type ChangedLineRange } from "../git.js";
 import { isJsonObject } from "./dead-code.js";
 import { filterProductionFilesForMutation } from "./stryker-runner.js";
 export interface MutationPreflightOptions {
@@ -136,7 +136,11 @@ const silentLogger = {
   isFatalEnabled: (): boolean => false,
 };
 
-async function countMutantsForFile(filePath: string, content: string): Promise<number> {
+async function countMutantsForFile(
+  filePath: string,
+  content: string,
+  ranges: readonly ChangedLineRange[] | undefined
+): Promise<number> {
   try {
     const instrumenter = new Instrumenter(silentLogger);
     const result = await instrumenter.instrument(
@@ -144,9 +148,18 @@ async function countMutantsForFile(filePath: string, content: string): Promise<n
       { ignorers: [], excludedMutations: [], plugins: null }
     );
 
-    return result.mutants.length;
+    // Stryker locations are zero-based; changed line ranges are one-based.
+    return result.mutants.filter((mutant) => {
+      const line = mutant.location.start.line + 1;
+
+      return !ranges || ranges.some((range) => line >= range.start && line <= range.end);
+    }).length;
   } catch {
-    const lines = content.split("\n").filter((line) => line.trim().length > 0).length;
+    const lines = content.split("\n").filter((text, index) => {
+      const line = index + 1;
+
+      return text.trim().length > 0 && (!ranges || ranges.some((range) => line >= range.start && line <= range.end));
+    }).length;
 
     return Math.round(lines * ESTIMATED_MUTANTS_PER_LINE);
   }
@@ -306,19 +319,32 @@ export async function evaluateResourceSafety(
   };
 }
 
+// With --since, keep only files that have changed lines and attach those ranges; otherwise whole files.
+function resolveScopedFiles(
+  cwd: string,
+  mutableFiles: string[],
+  since: string | undefined
+): { file: string; ranges: ChangedLineRange[] | undefined }[] {
+  if (!since) return mutableFiles.map((file) => ({ file, ranges: undefined }));
+  const lineRanges = getChangedLineRangesSince(cwd, since);
+
+  return mutableFiles.flatMap((file) => {
+    const ranges = lineRanges.get(path.resolve(cwd, file));
+
+    return ranges ? [{ file, ranges }] : [];
+  });
+}
+
 export async function calculateMutationPreflight(
   options: MutationPreflightOptions = {}
 ): Promise<MutationPreflightReport> {
   const cwd = path.resolve(options.cwd || process.cwd());
   const targetFiles = resolvePreflightTargets(cwd, options);
   const mutableFiles = filterProductionFilesForMutation(cwd, targetFiles);
-
-  const maxFilesLimit =
-    options.maxMutationFiles && options.maxMutationFiles > 0
-      ? options.maxMutationFiles
-      : DEFAULT_MAX_FILES;
-
-  const isScopeTooBroad = mutableFiles.length > maxFilesLimit;
+  const scopedFiles = resolveScopedFiles(cwd, mutableFiles, options.since);
+  const requestedMaxFiles = options.maxMutationFiles ?? 0;
+  const maxFilesLimit = requestedMaxFiles > 0 ? requestedMaxFiles : DEFAULT_MAX_FILES;
+  const isScopeTooBroad = scopedFiles.length > maxFilesLimit;
   const cachedData = loadIncrementalCache(cwd);
   const resources = await evaluateResourceSafety(options.concurrency);
   const effectiveConcurrency = options.concurrency ?? resources.recommendedConcurrency;
@@ -327,18 +353,20 @@ export async function calculateMutationPreflight(
   let totalCachedMutants = 0;
   let totalPendingMutants = 0;
 
-  for (const relFile of mutableFiles) {
-    const fullPath = path.resolve(cwd, relFile);
+  for (const { file, ranges } of scopedFiles) {
+    const fullPath = path.resolve(cwd, file);
     let lines = 0;
     let estimatedMutants = 0;
 
     if (fs.existsSync(fullPath)) {
       const content = fs.readFileSync(fullPath, "utf-8");
-      lines = content.split("\n").length;
-      estimatedMutants = await countMutantsForFile(fullPath, content);
+      lines = ranges
+        ? ranges.reduce((total, range) => total + range.end - range.start + 1, 0)
+        : content.split("\n").length;
+      estimatedMutants = await countMutantsForFile(fullPath, content, ranges);
     }
 
-    const cachedMutants = cachedData[relFile] ?? 0;
+    const cachedMutants = cachedData[file] ?? 0;
     const pendingMutants = Math.max(0, estimatedMutants - cachedMutants);
 
     totalEstimatedMutants += estimatedMutants;
@@ -346,7 +374,7 @@ export async function calculateMutationPreflight(
     totalPendingMutants += pendingMutants;
 
     fileEstimates.push({
-      file: relFile,
+      file,
       lines,
       estimatedMutants,
       cachedMutants,

@@ -317,6 +317,7 @@ async function runMutationGate(
       minScore: options.minMutationScore,
       concurrency: options.mutationConcurrency,
       maxMutationFiles: options.maxMutationFiles,
+      since: options.since,
     })
   );
   if (!res) return { findings: [] };

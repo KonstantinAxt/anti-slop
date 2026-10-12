@@ -32,6 +32,52 @@ export function getDiffFilesSince(cwd: string, ref: string): string[] {
   return runGitDiff(cwd, `${normalizedRef}...HEAD --name-only --diff-filter=ACMR`);
 }
 
+const REF_HEADS_PREFIX = /^(origin\/)?refs\/heads\//;
+const DIFF_NEW_PATH_PREFIX_LENGTH = 6;
+export interface ChangedLineRange {
+  start: number;
+  end: number;
+}
+
+// Query added or changed line ranges between a reference revision and HEAD.
+export function getChangedLineRangesSince(cwd: string, ref: string): Map<string, ChangedLineRange[]> {
+  const normalizedRef = ref.replace(REF_HEADS_PREFIX, "$1");
+  let diff: string;
+  try {
+    diff = execSync(`git diff --unified=0 ${normalizedRef}...HEAD`, {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return new Map();
+  }
+
+  return parseChangedLineRanges(cwd, diff);
+}
+
+// With --unified=0 every hunk header "+start,count" is exactly the added line range; count 0 means deletion only.
+function parseChangedLineRanges(cwd: string, diff: string): Map<string, ChangedLineRange[]> {
+  const changedRanges = new Map<string, ChangedLineRange[]>();
+  let currentFile: string | null = null;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+++ ")) {
+      const relativeFile = line.slice(DIFF_NEW_PATH_PREFIX_LENGTH);
+      currentFile = CODE_EXTENSIONS.has(path.extname(relativeFile)) ? path.resolve(cwd, relativeFile) : null;
+      continue;
+    }
+    const hunk = /^@@ -\S+ \+(\d+)(?:,(\d+))? @@/.exec(line);
+    const count = Number(hunk?.[2] ?? "1");
+    if (!hunk || !currentFile || count === 0) continue;
+    const start = Number(hunk[1]);
+    const ranges = changedRanges.get(currentFile) ?? [];
+    ranges.push({ start, end: start + count - 1 });
+    changedRanges.set(currentFile, ranges);
+  }
+
+  return changedRanges;
+}
+
 // Query git repository for tracked and untracked code files respecting .gitignore.
 // Returns null outside a repository or when the directory itself is ignored, so the caller walks the filesystem.
 export function getTrackedCodeFiles(dir: string, customIgnored?: Set<string>): string[] | null {

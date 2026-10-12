@@ -650,7 +650,8 @@ describe("Stryker Mutation Runner", () => {
 
       const skipResult = validateMutationPreconditions(tempDir, ["README.md", "types.d.ts"]);
 
-      expect(skipResult.skip).toBe(true);
+      expect(skipResult).toEqual({});
+
       const nineFiles = Array.from({ length: 9 }, (_, idx) => `src/file${idx}.ts`);
       const broadResult = validateMutationPreconditions(tempDir, nineFiles);
       expect(broadResult.errorFindings?.[0]?.rule).toBe("stryker-scope-too-broad");

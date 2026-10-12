@@ -3,12 +3,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { MutantResult } from "@stryker-mutator/api/core";
 import { Stryker } from "@stryker-mutator/core";
+import { getChangedLineRangesSince } from "../git.js";
 import type { Finding, MutationScoreMetrics } from "../types.js";
 
 export interface StrykerOptions {
   minScore?: number | undefined;
   concurrency?: number | undefined;
   maxMutationFiles?: number | undefined;
+  since?: string | undefined;
 }
 
 export interface StrykerCheckResult {
@@ -378,14 +380,15 @@ export function getOptimalConcurrency(requested?: number): number {
  * Construct synthesized Stryker configuration options.
  *
  * @param cwd Workspace root directory.
- * @param mutateFiles List of files to mutate.
+ * @param mutateFiles File patterns and optional line ranges to mutate.
  * @param concurrency Optional concurrency override.
- * @returns Stryker options object or configuration error finding.
+ * @param testTargetFiles Unranged file paths to select related tests.
  */
 export function buildStrykerOptions(
   cwd: string,
   mutateFiles: string[],
-  concurrency?: number
+  concurrency?: number,
+  testTargetFiles: string[] = mutateFiles
 ): { options?: SynthesizedStrykerConfig; errorFinding?: Finding } {
   const hasConfig = hasStrykerConfig(cwd);
 
@@ -399,7 +402,7 @@ export function buildStrykerOptions(
     };
   }
 
-  const detected = detectTestSetup(cwd, mutateFiles);
+  const detected = detectTestSetup(cwd, testTargetFiles);
   if (!detected) {
     return {
       errorFinding: {
@@ -563,7 +566,6 @@ export function cleanupStrykerSandbox(cwd: string): void {
 interface MutationPreconditions {
   options?: SynthesizedStrykerConfig;
   errorFindings?: Finding[];
-  skip?: boolean;
 }
 
 export function checkMemoryThreshold(freeMem: number, totalMem: number, cwd: string): Finding | null {
@@ -608,11 +610,12 @@ export function validateMutationPreconditions(
   cwd: string,
   targetFiles?: string[],
   concurrency?: number,
-  maxMutationFiles?: number
+  maxMutationFiles?: number,
+  since?: string
 ): MutationPreconditions {
   const mutateFiles = filterProductionFilesForMutation(cwd, targetFiles);
   if (targetFiles && targetFiles.length > 0 && mutateFiles.length === 0) {
-    return { skip: true };
+    return {};
   }
 
   const effectiveMaxFiles =
@@ -620,11 +623,21 @@ export function validateMutationPreconditions(
       ? maxMutationFiles
       : MAX_MUTATION_FILES;
 
-  const scopeError = checkScopeLimit(mutateFiles.length, cwd, effectiveMaxFiles);
+  const lineRanges = since ? getChangedLineRangesSince(cwd, since) : undefined;
+  const scopedMutateFiles = lineRanges
+    ? mutateFiles.flatMap((file) =>
+        (lineRanges.get(path.resolve(cwd, file)) ?? []).map((range) => `${file}:${range.start}-${range.end}`)
+      )
+    : mutateFiles;
+  if (scopedMutateFiles.length === 0) return {};
+  const scopedFileCount = lineRanges
+    ? mutateFiles.filter((file) => lineRanges.has(path.resolve(cwd, file))).length
+    : mutateFiles.length;
+  const scopeError = checkScopeLimit(scopedFileCount, cwd, effectiveMaxFiles);
   if (scopeError) {
     return { errorFindings: [scopeError] };
   }
-  const { options, errorFinding } = buildStrykerOptions(cwd, mutateFiles, concurrency);
+  const { options, errorFinding } = buildStrykerOptions(cwd, scopedMutateFiles, concurrency, mutateFiles);
   if (errorFinding || !options) {
     return {
       errorFindings: [errorFinding ?? {
@@ -754,7 +767,7 @@ export async function checkMutation(
   targetFiles?: string[],
   options?: StrykerOptions
 ): Promise<StrykerCheckResult> {
-  const pre = validateMutationPreconditions(cwd, targetFiles, options?.concurrency, options?.maxMutationFiles);
+  const pre = validateMutationPreconditions(cwd, targetFiles, options?.concurrency, options?.maxMutationFiles, options?.since);
   if (pre.errorFindings || !pre.options) {
     return { findings: pre.errorFindings ?? [] };
   }

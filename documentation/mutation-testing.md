@@ -233,6 +233,8 @@ Run mutation testing on files changed against `origin/main`:
 anti-slop --mutation --since origin/main
 ```
 
+When `--since <ref>` is set, Stryker mutates only added or changed line ranges in the diff; unchanged lines in a changed file are excluded. A file with only deletions contributes no mutation range. Without `--since`, the complete targeted production files are mutated. The mutation score threshold is calculated from the mutants in the selected scope.
+
 Run mutation testing on staged files:
 ```bash
 anti-slop --mutation --staged

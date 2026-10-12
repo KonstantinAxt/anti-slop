@@ -70,6 +70,8 @@ If you want mutation testing on changed files, add the mutation flag:
 anti-slop --mutation --since origin/main
 ```
 
+With `--since <ref>`, mutation testing targets only added or changed lines in changed production files; unchanged code is not mutated. Without `--since`, the full targeted files remain in scope.
+
 If you want to run mutation testing on a specific check or file, provide the file path:
 
 ```bash
