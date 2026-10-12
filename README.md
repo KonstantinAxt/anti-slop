@@ -230,7 +230,7 @@ The eslint check identifies logic errors, complexity, and common shortcuts:
 - slop/no-redundant-presence-check: You must not check Map#has before Map#get with redundant lookups or unreachable guards; look up the key once and narrow the result.
 - slop/no-unknown-returns: You must not specify return annotations of unknown, Promise<unknown>, or PromiseLike<unknown> (opt-in; same-file AST only).
 - slop/no-unknown-parameters: You must not annotate parameters as unknown or a union containing it, except a cause parameter or the exact subject of a type predicate (opt-in; same-file AST only).
-- slop/no-unknown-dictionary-values: You must not use unknown, any, object, or {} as Record or index-signature value types; generic constraints like T extends Record<string, unknown> are allowed (opt-in; same-file AST only).
+- slop/no-unknown-dictionary-values: You must not use unknown, object, or {} as Record or index-signature value types; generic constraints like T extends Record<string, unknown> are allowed (opt-in; same-file AST only).
 - slop/no-reflect-escape: You must not use Reflect.get or Reflect.apply to escape static typing; use typed property access, typed function calls, or boundary schema parsing (opt-in; global Reflect only).
 - no-warning-comments: Code must not contain leftover scratchpad notes or prompt markers.
 - no-nested-ternary: You must not nest ternary expressions; use if/else chains or switch statements instead.

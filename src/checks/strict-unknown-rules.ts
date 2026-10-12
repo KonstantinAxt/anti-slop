@@ -90,9 +90,9 @@ export const noUnknownParametersRule: Rule.RuleModule = {
   },
 };
 
-const OPEN_VALUE_TYPES = ":matches(TSUnknownKeyword, TSAnyKeyword, TSObjectKeyword, TSTypeLiteral[members.length=0])";
+const OPEN_VALUE_TYPES = ":matches(TSUnknownKeyword, TSObjectKeyword, TSTypeLiteral[members.length=0])";
 
-// Dictionary value contracts of unknown, any, object or {}. Generic constraints such as `T extends Record<string, unknown>` are allowed.
+// Dictionary value contracts of unknown, object or {}. Generic constraints such as `T extends Record<string, unknown>` are allowed.
 const OPEN_DICTIONARY_SELECTORS: Record<string, string> = {
   [`TSTypeReference[typeName.name='Record']:not(TSTypeParameter > TSTypeReference) > TSTypeParameterInstantiation > ${OPEN_VALUE_TYPES}:nth-child(2)`]:
     "Record value",
@@ -102,7 +102,7 @@ const OPEN_DICTIONARY_SELECTORS: Record<string, string> = {
 export const noUnknownDictionaryValuesRule: Rule.RuleModule = {
   meta: {
     type: "problem",
-    docs: { description: "Rejects dictionary value types of 'unknown', 'any', 'object' or '{}' (same-file AST only)." },
+    docs: { description: "Rejects dictionary value types of 'unknown', 'object' or '{}' (same-file AST only)." },
     schema: [],
     messages: {
       noOpenDictionaryValue: "Avoid '{{type}}' as {{kind}} type. Use a concrete value type, a generic, or a parsed schema type. (Same-file AST only)",
