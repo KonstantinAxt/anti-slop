@@ -57,7 +57,7 @@ export const noUnknownParametersRule: Rule.RuleModule = {
   },
   create(context: Rule.RuleContext): Rule.RuleListener {
     const { sourceCode } = context;
-    const candidates: { node: ESTreeNode; name: string; owner: ESTreeNode | undefined }[] = [];
+    const candidates = new Map<ESTreeNode, { name: string; owner: ESTreeNode | undefined }>();
     const predicateSubjects = new Map<ESTreeNode | undefined, string>();
     return {
       ...Object.fromEntries(
@@ -68,7 +68,7 @@ export const noUnknownParametersRule: Rule.RuleModule = {
             // An annotated parameter's text is its name, an optional '?', then the annotation.
             const parameterText = sourceCode.getText(ancestors.at(-depth));
             const nameText = parameterText.slice(0, parameterText.length - sourceCode.getText(ancestors.at(1 - depth)).length);
-            candidates.push({ node, name: nameText.replace(/\?$/, ""), owner: ancestors.at(-depth - 1) });
+            candidates.set(node, { name: nameText.replace("?", ""), owner: ancestors.at(-depth - 1) });
           },
         ])
       ),
@@ -76,7 +76,7 @@ export const noUnknownParametersRule: Rule.RuleModule = {
         predicateSubjects.set(sourceCode.getAncestors(node).at(-3), sourceCode.getText(node));
       },
       "Program:exit"() {
-        for (const { node, name, owner } of candidates) {
+        for (const [node, { name, owner }] of candidates) {
           if (predicateSubjects.get(owner) !== name) {
             context.report({ node, messageId: "noUnknownParameter", data: { name } });
           }
