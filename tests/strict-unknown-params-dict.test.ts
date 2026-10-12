@@ -55,13 +55,18 @@ const dictMessage = (type: string, kind: string): string =>
 describe("slop/no-unknown-dictionary-values", () => {
   it.each([
     ["Record of unknown", "export type D = Record<string, unknown>;", "unknown", "Record value"],
-    ["Record of any", "export type D = Record<string, any>;", "any", "Record value"],
     ["Record of object", "export type D = Record<string, object>;", "object", "Record value"],
     ["Record of {}", "export type D = Record<string, {}>;", "{}", "Record value"],
     ["index signature of unknown", "export interface D { [key: string]: unknown; }", "unknown", "index signature value"],
     ["index signature of {}", "export type D = { [key: string]: {} };", "{}", "index signature value"],
   ])("reports %s", async (_, code, type, kind) => {
     expect(await messagesFor(DICT_RULE, code)).toEqual([dictMessage(type, kind)]);
+  });
+
+  it("does not report any dictionary values", async () => {
+    const code = "export type D = Record<string, any>; export type I = { [key: string]: any };";
+
+    expect(await messagesFor(DICT_RULE, code)).toEqual([]);
   });
 
   it.each([
@@ -74,6 +79,8 @@ describe("slop/no-unknown-dictionary-values", () => {
   ])("allows %s", async (_, code) => {
     expect(await messagesFor(DICT_RULE, code)).toEqual([]);
   });
+
+
 });
 
 describe("strict-unknown opt-in", () => {
