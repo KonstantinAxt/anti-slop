@@ -6,6 +6,7 @@ const DICT_RULE = "slop/no-unknown-dictionary-values";
 
 async function messagesFor(rule: string, code: string): Promise<string[]> {
   const findings = await checkWithEslint("src/test.ts", code, { [rule]: "error" });
+
   return findings.filter((finding) => finding.rule === rule).map((finding) => finding.message);
 }
 

@@ -39,6 +39,9 @@ const PARAMETER_OWNERS =
 const UNKNOWN_PARAMETER = `${PARAMETER_OWNERS} > Identifier.params[name!='cause'] > TSTypeAnnotation >`;
 
 // Selector for an `unknown` keyword in a parameter annotation, mapped to the parameter's depth above that keyword.
+// A predicate subject's ancestors are TSTypePredicate, then TSTypeAnnotation, then the owning function.
+const PREDICATE_OWNER_DEPTH = 3;
+
 const UNKNOWN_PARAMETER_SELECTORS: Record<string, number> = {
   [`${UNKNOWN_PARAMETER} TSUnknownKeyword`]: 2,
   [`${UNKNOWN_PARAMETER} TSUnionType > TSUnknownKeyword`]: 3,
@@ -59,6 +62,7 @@ export const noUnknownParametersRule: Rule.RuleModule = {
     const { sourceCode } = context;
     const candidates = new Map<ESTreeNode, { name: string; owner: ESTreeNode | undefined }>();
     const predicateSubjects = new Map<ESTreeNode | undefined, string>();
+
     return {
       ...Object.fromEntries(
         Object.entries(UNKNOWN_PARAMETER_SELECTORS).map(([selector, depth]) => [
@@ -73,7 +77,7 @@ export const noUnknownParametersRule: Rule.RuleModule = {
         ])
       ),
       "TSTypePredicate > Identifier.parameterName"(node: ESTreeNode) {
-        predicateSubjects.set(sourceCode.getAncestors(node).at(-3), sourceCode.getText(node));
+        predicateSubjects.set(sourceCode.getAncestors(node).at(-PREDICATE_OWNER_DEPTH), sourceCode.getText(node));
       },
       "Program:exit"() {
         for (const [node, { name, owner }] of candidates) {
