@@ -32,3 +32,82 @@ export const noUnknownReturnsRule: Rule.RuleModule = {
     );
   },
 };
+
+const PARAMETER_OWNERS =
+  ":matches(:function, TSDeclareFunction, TSEmptyBodyFunctionExpression, TSMethodSignature, TSFunctionType, TSConstructorType, TSCallSignatureDeclaration, TSConstructSignatureDeclaration)";
+
+const UNKNOWN_PARAMETER = `${PARAMETER_OWNERS} > Identifier.params[name!='cause'] > TSTypeAnnotation >`;
+
+// Selector for an `unknown` keyword in a parameter annotation, mapped to the parameter's depth above that keyword.
+const UNKNOWN_PARAMETER_SELECTORS: Record<string, number> = {
+  [`${UNKNOWN_PARAMETER} TSUnknownKeyword`]: 2,
+  [`${UNKNOWN_PARAMETER} TSUnionType > TSUnknownKeyword`]: 3,
+};
+
+// Parameters typed `unknown` or a union containing it. `cause` and the exact type-predicate subject are allowed.
+// Same-file AST only: type aliases are not resolved.
+export const noUnknownParametersRule: Rule.RuleModule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Rejects 'unknown' parameter type annotations, except 'cause' and type-predicate subjects (same-file AST only)." },
+    schema: [],
+    messages: {
+      noUnknownParameter: "Avoid 'unknown' on parameter '{{name}}'. Accept a concrete domain type or generic, and parse at the boundary. (Same-file AST only)",
+    },
+  },
+  create(context: Rule.RuleContext): Rule.RuleListener {
+    const candidates: { parameter: ESTreeNode | undefined; owner: ESTreeNode | undefined }[] = [];
+    const predicateSubjects = new Map<ESTreeNode | undefined, string>();
+    return {
+      ...Object.fromEntries(
+        Object.entries(UNKNOWN_PARAMETER_SELECTORS).map(([selector, depth]) => [
+          selector,
+          (node: ESTreeNode) => {
+            const ancestors = context.sourceCode.getAncestors(node);
+            candidates.push({ parameter: ancestors.at(-depth), owner: ancestors.at(-depth - 1) });
+          },
+        ])
+      ),
+      "TSTypePredicate > Identifier.parameterName"(node: Rule.Node) {
+        predicateSubjects.set(context.sourceCode.getAncestors(node).at(-3), node.type === "Identifier" ? node.name : "");
+      },
+      "Program:exit"() {
+        for (const { parameter, owner } of candidates) {
+          if (parameter?.type === "Identifier" && predicateSubjects.get(owner) !== parameter.name) {
+            context.report({ node: parameter, messageId: "noUnknownParameter", data: { name: parameter.name } });
+          }
+        }
+      },
+    };
+  },
+};
+
+const OPEN_VALUE_TYPES = ":matches(TSUnknownKeyword, TSAnyKeyword, TSObjectKeyword, TSTypeLiteral[members.length=0])";
+
+// Dictionary value contracts of unknown, any, object or {}. Generic constraints such as `T extends Record<string, unknown>` are allowed.
+const OPEN_DICTIONARY_SELECTORS: Record<string, string> = {
+  [`TSTypeReference[typeName.name='Record']:not(TSTypeParameter > TSTypeReference) > TSTypeParameterInstantiation > ${OPEN_VALUE_TYPES}:nth-child(2)`]:
+    "Record value",
+  [`TSIndexSignature > TSTypeAnnotation > ${OPEN_VALUE_TYPES}`]: "index signature value",
+};
+
+export const noUnknownDictionaryValuesRule: Rule.RuleModule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Rejects dictionary value types of 'unknown', 'any', 'object' or '{}' (same-file AST only)." },
+    schema: [],
+    messages: {
+      noOpenDictionaryValue: "Avoid '{{type}}' as {{kind}} type. Use a concrete value type, a generic, or a parsed schema type. (Same-file AST only)",
+    },
+  },
+  create(context: Rule.RuleContext): Rule.RuleListener {
+    return Object.fromEntries(
+      Object.entries(OPEN_DICTIONARY_SELECTORS).map(([selector, kind]) => [
+        selector,
+        (node: ESTreeNode) => {
+          context.report({ node, messageId: "noOpenDictionaryValue", data: { kind, type: context.sourceCode.getText(node) } });
+        },
+      ])
+    );
+  },
+};

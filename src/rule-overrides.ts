@@ -19,6 +19,8 @@ export interface RuleOverride {
 const ESLINT_NUMERIC_ERROR = 2;
 const DEFAULT_OFF_RULES: Record<string, true> = {
   "slop/no-unknown-returns": true,
+  "slop/no-unknown-parameters": true,
+  "slop/no-unknown-dictionary-values": true,
   "slop/no-reflect-escape": true,
 };
 
@@ -182,6 +184,8 @@ const RULE_ALIASES: Record<string, string[]> = {
     "no-redundant-presence-check",
   ],
   "slop/no-unknown-returns": ["slop/no-unknown-returns", "no-unknown-returns"],
+  "slop/no-unknown-parameters": ["slop/no-unknown-parameters", "no-unknown-parameters"],
+  "slop/no-unknown-dictionary-values": ["slop/no-unknown-dictionary-values", "no-unknown-dictionary-values"],
   "slop/no-reflect-escape": ["slop/no-reflect-escape", "no-reflect-escape"],
 
   // Stale mocks

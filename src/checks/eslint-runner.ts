@@ -17,7 +17,7 @@ import { noEnvShellCommandRule } from "./no-env-shell-command-rule.js";
 import { noRedundantPresenceCheckRule } from "./no-redundant-presence-check-rule.js";
 import { noReflectEscapeRule } from "./no-reflect-escape-rule.js";
 import { requireAssertionJustificationRule } from "./require-assertion-justification-rule.js";
-import { noUnknownReturnsRule } from "./strict-unknown-rules.js";
+import { noUnknownDictionaryValuesRule, noUnknownParametersRule, noUnknownReturnsRule } from "./strict-unknown-rules.js";
 import unicorn from "eslint-plugin-unicorn";
 import useClientPlugin from "eslint-plugin-use-client";
 import barrelFilesPlugin from "eslint-plugin-barrel-files";
@@ -944,6 +944,8 @@ function getEslint(): ESLint {
         "no-env-shell-command": noEnvShellCommandRule,
         "no-redundant-presence-check": noRedundantPresenceCheckRule,
         "no-unknown-returns": noUnknownReturnsRule,
+        "no-unknown-parameters": noUnknownParametersRule,
+        "no-unknown-dictionary-values": noUnknownDictionaryValuesRule,
         "no-reflect-escape": noReflectEscapeRule,
       },
     },
@@ -1044,6 +1046,8 @@ function getEslint(): ESLint {
           "slop/no-env-shell-command": "error",
           "slop/no-redundant-presence-check": "error",
           "slop/no-unknown-returns": "error",
+          "slop/no-unknown-parameters": "error",
+          "slop/no-unknown-dictionary-values": "error",
           "slop/no-reflect-escape": "warn",
           "no-warning-comments": [
             "error",
@@ -1406,6 +1410,14 @@ const RULE_WHY_AND_SUGGESTIONS: Record<string, { why: string; suggestion?: strin
   "slop/no-redundant-presence-check": {
     why: "TypeScript does not narrow Map#get after Map#has (microsoft/TypeScript#13086). Checking presence before get introduces redundant hash lookups or unreachable error guards.",
     suggestion: "Look up the key once with .get() and narrow the result or use nullish coalescing (??).",
+  },
+  "slop/no-unknown-parameters": {
+    why: "Type evidence hygiene: 'unknown' parameters accept anything and push validation into every function body instead of the boundary (same-file AST only).",
+    suggestion: "Accept a concrete domain type or generic, and parse untrusted input with a schema at the boundary. 'cause' and type-predicate subjects are allowed.",
+  },
+  "slop/no-unknown-dictionary-values": {
+    why: "Type evidence hygiene: Dictionaries of 'unknown', 'any', 'object' or '{}' values discard what each entry holds (same-file AST only).",
+    suggestion: "Use a concrete value type, a generic, or a parsed schema type. Generic constraints such as 'T extends Record<string, unknown>' are allowed.",
   },
   "slop/no-unknown-returns": {
     why: "Type evidence hygiene: Returning 'unknown', 'Promise<unknown>', or 'PromiseLike<unknown>' discards type evidence at contract boundaries and defers validation to callers (same-file AST only).",
