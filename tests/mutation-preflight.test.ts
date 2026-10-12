@@ -188,7 +188,10 @@ describe("Mutation Preflight & Capacity Estimator", () => {
   });
 
   it("adds up the fallback estimate across separate changed hunks", async () => {
-    const { tempDir, base } = createPreflightRepo("let a = ;\nlet b = ;\nlet c = ;\n", "let A = ;\nlet b = ;\nlet C = ;\n");
+    const { tempDir, base } = createPreflightRepo(
+      "let a = ;\nlet b = ;\nlet c = ;\nlet d = ;\n",
+      "let a = ;\nlet B = ;\nlet c = ;\nlet D = ;\n"
+    );
 
     try {
       const report = await calculateMutationPreflight({ cwd: tempDir, since: base, concurrency: 1 });

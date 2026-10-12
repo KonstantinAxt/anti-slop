@@ -342,10 +342,8 @@ export async function calculateMutationPreflight(
   const targetFiles = resolvePreflightTargets(cwd, options);
   const mutableFiles = filterProductionFilesForMutation(cwd, targetFiles);
   const scopedFiles = resolveScopedFiles(cwd, mutableFiles, options.since);
-  const maxFilesLimit =
-    typeof options.maxMutationFiles === "number" && options.maxMutationFiles > 0
-      ? options.maxMutationFiles
-      : DEFAULT_MAX_FILES;
+  const requestedMaxFiles = options.maxMutationFiles ?? 0;
+  const maxFilesLimit = requestedMaxFiles > 0 ? requestedMaxFiles : DEFAULT_MAX_FILES;
   const isScopeTooBroad = scopedFiles.length > maxFilesLimit;
   const cachedData = loadIncrementalCache(cwd);
   const resources = await evaluateResourceSafety(options.concurrency);
