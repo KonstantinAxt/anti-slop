@@ -62,6 +62,7 @@ describe("comment-discipline/require-assertion-justification", () => {
       );
       const empty = await checkWithEslint("src/example.ts", "const value = input as string; // SAFETY:");
       const invalid = await checkWithEslint("src/example.ts", "// SAFETY comment\nconst value = input as string;");
+
       expect(bare.filter((finding) => finding.rule === CONSISTENT_ASSERTION_RULE)).toHaveLength(1);
       expect(justified.filter((finding) => finding.rule === CONSISTENT_ASSERTION_RULE)).toHaveLength(0);
       expect(empty.filter((finding) => finding.rule === CONSISTENT_ASSERTION_RULE)).toHaveLength(1);
