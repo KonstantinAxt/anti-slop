@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.51](https://github.com/KonstantinAxt/anti-slop/compare/anti-slop-v0.1.50...anti-slop-v0.1.51) (2026-10-12)
+
+
+### Features
+
+* **rules:** add opt-in no-reflect-escape rule ([#30](https://github.com/KonstantinAxt/anti-slop/issues/30)) ([d084785](https://github.com/KonstantinAxt/anti-slop/commit/d08478542e5af9ee864d5f3a9fc75688fb2d1f22))
+
 ## [0.1.50](https://github.com/KonstantinAxt/anti-slop/compare/anti-slop-v0.1.49...anti-slop-v0.1.50) (2026-10-12)
 
 
