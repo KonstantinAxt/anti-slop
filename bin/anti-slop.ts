@@ -56,7 +56,7 @@ function writeStream(stream: NodeJS.WriteStream, data: string): Promise<void> {
     const onDone = (err?: Error | null) => {
       if (settled) return;
       settled = true;
-      if (err && (err as NodeJS.ErrnoException).code !== "EPIPE") {
+      if (err && (!("code" in err) || err.code !== "EPIPE")) {
         reject(err);
       } else {
         resolve();
