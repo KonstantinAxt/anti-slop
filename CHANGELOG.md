@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.47](https://github.com/KonstantinAxt/anti-slop/compare/anti-slop-v0.1.46...anti-slop-v0.1.47) (2026-10-12)
+
+
+### Bug Fixes
+
+* **preflight:** do not treat Stryker fallback globs as changed files ([#29](https://github.com/KonstantinAxt/anti-slop/issues/29)) ([0c24519](https://github.com/KonstantinAxt/anti-slop/commit/0c2451968aeebc69fc847adcffb5a2ac8e49ea97))
+
 ## [0.1.46](https://github.com/KonstantinAxt/anti-slop/compare/anti-slop-v0.1.45...anti-slop-v0.1.46) (2026-10-12)
 
 
