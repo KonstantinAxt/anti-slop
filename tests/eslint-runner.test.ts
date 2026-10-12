@@ -301,6 +301,47 @@ describe("ESLint Bundled Plugins Runner (sonarjs, effects, boundaries, vitest, s
     expect(findings.filter((finding) => finding.rule === "slop/no-env-shell-command")).toEqual([]);
   });
 
+  it("follows helper results through concatenation and conditionals", async () => {
+    const code = `
+      // SYNTHETIC
+      import { execSync } from "node:child_process";
+      const token = () => process.env.TOKEN;
+      export function run(flag: boolean): void {
+        execSync("echo " + token());
+        execSync(flag ? token() : "ls");
+      }
+    `;
+
+    const findings = await checkWithEslint("scripts/env-shell-operators.ts", code);
+    const envLines = findings.filter((finding) => finding.rule === "slop/no-env-shell-command").map((finding) => finding.line);
+
+    expect(envLines).toEqual([6, 7]);
+  });
+
+  it("does not flag safe operators, safe shell options, function values, or parameters that never reach the command", async () => {
+    const code = `
+      // SYNTHETIC
+      import { execSync, spawn } from "node:child_process";
+      const name = "safe";
+      export function run(flag: boolean): void {
+        execSync("echo " + "safe");
+        execSync(flag ? "ls" : "pwd");
+        execSync(name ?? "ls");
+        spawn("ls", ["-l"], { shell: true });
+        execSync(() => process.env.TOKEN);
+      }
+      function log(label: string): void {
+        execSync("ls");
+        console.log(label);
+      }
+      log(process.env.TOKEN ?? "");
+    `;
+
+    const findings = await checkWithEslint("scripts/env-shell-safe-shapes.ts", code);
+
+    expect(findings.filter((finding) => finding.rule === "slop/no-env-shell-command")).toEqual([]);
+  });
+
   it("does not follow multi-hop environment data flow", async () => {
     const code = `
       import { spawnSync } from "node:child_process";
