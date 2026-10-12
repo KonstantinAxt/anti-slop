@@ -131,6 +131,7 @@ describe("Mutation Preflight & Capacity Estimator", () => {
       expect(report.mutableFiles).toEqual(["calculator.ts"]);
       expect(report.fileEstimates).toHaveLength(1);
       expect(report.fileEstimates[0]?.lines).toBe(1);
+
       const fullReport = await calculateMutationPreflight({ cwd: tempDir, files: [source], concurrency: 1 });
       const changedLineMutants = report.fileEstimates[0]?.estimatedMutants ?? 0;
 

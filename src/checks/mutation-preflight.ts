@@ -319,20 +319,29 @@ export async function evaluateResourceSafety(
   };
 }
 
+// With --since, keep only files that have changed lines and attach those ranges; otherwise whole files.
+function resolveScopedFiles(
+  cwd: string,
+  mutableFiles: string[],
+  since: string | undefined
+): { file: string; ranges: ChangedLineRange[] | undefined }[] {
+  if (!since) return mutableFiles.map((file) => ({ file, ranges: undefined }));
+  const lineRanges = getChangedLineRangesSince(cwd, since);
+
+  return mutableFiles.flatMap((file) => {
+    const ranges = lineRanges.get(path.resolve(cwd, file));
+
+    return ranges ? [{ file, ranges }] : [];
+  });
+}
+
 export async function calculateMutationPreflight(
   options: MutationPreflightOptions = {}
 ): Promise<MutationPreflightReport> {
   const cwd = path.resolve(options.cwd || process.cwd());
   const targetFiles = resolvePreflightTargets(cwd, options);
   const mutableFiles = filterProductionFilesForMutation(cwd, targetFiles);
-  const lineRanges = options.since ? getChangedLineRangesSince(cwd, options.since) : undefined;
-  const scopedFiles = lineRanges
-    ? mutableFiles.flatMap((file) => {
-        const ranges = lineRanges.get(path.resolve(cwd, file));
-
-        return ranges ? [{ file, ranges }] : [];
-      })
-    : mutableFiles.map((file) => ({ file, ranges: undefined }));
+  const scopedFiles = resolveScopedFiles(cwd, mutableFiles, options.since);
   const maxFilesLimit = options.maxMutationFiles && options.maxMutationFiles > 0
     ? options.maxMutationFiles
     : DEFAULT_MAX_FILES;
