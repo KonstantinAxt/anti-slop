@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.46](https://github.com/KonstantinAxt/anti-slop/compare/anti-slop-v0.1.45...anti-slop-v0.1.46) (2026-10-12)
+
+
+### Features
+
+* **mutation:** with --since, only mutate changed lines ([#34](https://github.com/KonstantinAxt/anti-slop/issues/34)) ([b6a0630](https://github.com/KonstantinAxt/anti-slop/commit/b6a06304d97c96dd316ffd568cde5df124bbc90b))
+
 ## [0.1.45](https://github.com/KonstantinAxt/anti-slop/compare/anti-slop-v0.1.44...anti-slop-v0.1.45) (2026-10-09)
 
 
