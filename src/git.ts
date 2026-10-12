@@ -56,53 +56,26 @@ export function getChangedLineRangesSince(cwd: string, ref: string): Map<string,
   return parseChangedLineRanges(cwd, diff);
 }
 
+// With --unified=0 every hunk header "+start,count" is exactly the added line range; count 0 means deletion only.
 function parseChangedLineRanges(cwd: string, diff: string): Map<string, ChangedLineRange[]> {
   const changedRanges = new Map<string, ChangedLineRange[]>();
   let currentFile: string | null = null;
-  let newLine = 0;
-  let isDeletedRange = false;
   for (const line of diff.split("\n")) {
-    if (line.startsWith("diff --git ")) {
-      currentFile = null;
-      continue;
-    }
     if (line.startsWith("+++ ")) {
-      currentFile = line.startsWith("+++ b/") ? resolveDiffPath(cwd, line) : null;
+      const relativeFile = line.slice(DIFF_NEW_PATH_PREFIX_LENGTH);
+      currentFile = CODE_EXTENSIONS.has(path.extname(relativeFile)) ? path.resolve(cwd, relativeFile) : null;
       continue;
     }
-    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
-    if (hunk) {
-      newLine = Number(hunk[1]);
-      isDeletedRange = Number(hunk[2] ?? "1") === 0;
-      continue;
-    }
-    if (isDeletedRange || !currentFile || !line) continue;
-    if (line.startsWith("+")) {
-      addChangedLine(changedRanges, currentFile, newLine);
-      newLine++;
-    } else if (!line.startsWith("-")) {
-      newLine++;
-    }
+    const hunk = /^@@ -\S+ \+(\d+)(?:,(\d+))? @@/.exec(line);
+    const count = Number(hunk?.[2] ?? "1");
+    if (!hunk || !currentFile || count === 0) continue;
+    const start = Number(hunk[1]);
+    const ranges = changedRanges.get(currentFile) ?? [];
+    ranges.push({ start, end: start + count - 1 });
+    changedRanges.set(currentFile, ranges);
   }
 
   return changedRanges;
-}
-
-function resolveDiffPath(cwd: string, line: string): string | null {
-  const relativeFile = line.slice(DIFF_NEW_PATH_PREFIX_LENGTH);
-
-  return CODE_EXTENSIONS.has(path.extname(relativeFile)) ? path.resolve(cwd, relativeFile) : null;
-}
-
-function addChangedLine(rangesByFile: Map<string, ChangedLineRange[]>, file: string, line: number): void {
-  const ranges = rangesByFile.get(file) ?? [];
-  const previousRange = ranges.at(-1);
-  if (previousRange && previousRange.end === line - 1) {
-    previousRange.end = line;
-  } else {
-    ranges.push({ start: line, end: line });
-  }
-  rangesByFile.set(file, ranges);
 }
 
 // Query git repository for tracked and untracked code files respecting .gitignore.

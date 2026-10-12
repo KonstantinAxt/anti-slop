@@ -113,6 +113,41 @@ describe("Git Diff Helpers (src/git.ts)", () => {
     });
   });
 
+  it("reads single-line hunks, ignores non-code and removed files, and is not fooled by hunk-like content", () => {
+    const stdout = [
+      "diff --git a/src/edge.ts b/src/edge.ts",
+      "--- a/src/edge.ts",
+      "+++ b/src/edge.ts",
+      "@@ -7 +12 @@",
+      "+one line",
+      "@@ -30,3 +20,10 @@",
+      "+@@ -1 +40 @@",
+      "diff --git a/README.md b/README.md",
+      "--- a/README.md",
+      "+++ b/README.md",
+      "@@ -1 +1 @@",
+      "+docs",
+      "diff --git a/src/removed.ts b/src/removed.ts",
+      "--- a/src/removed.ts",
+      "+++ /dev/null",
+      "@@ -1,3 +0,0 @@",
+      "",
+    ].join("\n");
+    vi.mocked(execSync).mockReturnValue(stdout as never);
+
+    const ranges = getChangedLineRangesSince(cwd, "origin/refs/heads/main");
+
+    expect(ranges).toEqual(new Map([
+      [path.resolve(cwd, "src/edge.ts"), [{ start: 12, end: 12 }, { start: 20, end: 29 }]],
+    ]));
+
+    expect(execSync).toHaveBeenLastCalledWith("git diff --unified=0 origin/main...HEAD", {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  });
+
   it("returns an empty range map when git diff fails", () => {
     vi.mocked(execSync).mockImplementation(() => {
       throw new Error("fatal: unknown revision");

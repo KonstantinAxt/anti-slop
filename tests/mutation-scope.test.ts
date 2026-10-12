@@ -51,7 +51,7 @@ function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
 }
 
-function createMutationRepo(): { cwd: string; base: string; source: string } {
+function createMutationRepo(): { cwd: string; base: string; source: string; unchangedSource: string } {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "anti-slop-mutation-scope-"));
   repoDir = cwd;
   fs.mkdirSync(path.join(cwd, "src"));
@@ -67,6 +67,8 @@ function createMutationRepo(): { cwd: string; base: string; source: string } {
     "}",
     "",
   ].join("\n"));
+  const unchangedSource = path.join(cwd, "src/other.ts");
+  fs.writeFileSync(unchangedSource, 'export const other = "same";\n');
   git(cwd, "init", "-q");
   git(cwd, "config", "user.email", "test@example.invalid");
   git(cwd, "config", "user.name", "Test");
@@ -86,7 +88,7 @@ function createMutationRepo(): { cwd: string; base: string; source: string } {
   git(cwd, "add", ".");
   git(cwd, "commit", "-qm", "change one line");
 
-  return { cwd, base, source };
+  return { cwd, base, source, unchangedSource };
 }
 
 afterEach(() => {
@@ -113,6 +115,22 @@ describe("mutation scope from changed lines", () => {
     const result = await checkMutation(cwd, [source]);
 
     expect(result.findings.filter((finding) => finding.rule === "surviving-mutant").map((finding) => finding.line)).toEqual([6, 2]);
+  });
+
+  it("does not count unchanged target files against the file limit with --since", async () => {
+    const { cwd, base, source, unchangedSource } = createMutationRepo();
+
+    const result = await checkMutation(cwd, [source, unchangedSource], { since: base, maxMutationFiles: 1 });
+
+    expect(result.findings.map((finding) => finding.rule)).toEqual(["surviving-mutant"]);
+  });
+
+  it("skips mutation when --since has no changed production lines", async () => {
+    const { cwd, source } = createMutationRepo();
+
+    const result = await checkMutation(cwd, [source], { since: "HEAD" });
+
+    expect(result).toEqual({ findings: [] });
   });
 
   it("parses multiple hunks, added files, and deletion-only files from a real diff", () => {
