@@ -125,6 +125,16 @@ describe("mutation scope from changed lines", () => {
     expect(result.findings.map((finding) => finding.rule)).toEqual(["surviving-mutant"]);
   });
 
+  it("counts every changed target file against the file limit with --since", async () => {
+    const { cwd, base, source, unchangedSource } = createMutationRepo();
+    fs.writeFileSync(unchangedSource, 'export const other = "changed";\n');
+    git(cwd, "commit", "-qam", "change second file");
+
+    const result = await checkMutation(cwd, [source, unchangedSource], { since: base, maxMutationFiles: 1 });
+
+    expect(result.findings.map((finding) => finding.rule)).toEqual(["stryker-scope-too-broad"]);
+  });
+
   it("skips mutation when --since has no changed production lines", async () => {
     const { cwd, source } = createMutationRepo();
 

@@ -151,7 +151,7 @@ describe("Mutation Preflight & Capacity Estimator", () => {
       const fullReport = await calculateMutationPreflight({ cwd: tempDir, files: [source], concurrency: 1, maxMutationFiles: -1 });
       const oracle = path.join(tempDir, "changed-lines-only.ts");
       fs.writeFileSync(oracle, `${changed[1]}\n${changed[3]}\n`);
-      const oracleReport = await calculateMutationPreflight({ cwd: tempDir, files: [oracle], concurrency: 1 });
+      const oracleReport = await calculateMutationPreflight({ cwd: tempDir, files: [oracle], concurrency: 1, maxMutationFiles: 0 });
       const changedLineMutants = report.fileEstimates[0]?.estimatedMutants ?? 0;
 
       expect(report.fileEstimates.map((estimate) => [estimate.file, estimate.lines, estimate.cachedMutants])).toEqual([["calculator.ts", 2, 2]]);
@@ -165,13 +165,15 @@ describe("Mutation Preflight & Capacity Estimator", () => {
       expect(fullReport.fileEstimates[0]?.lines).toBe(5);
 
       expect(fullReport.isScopeTooBroad).toBe(false);
+
+      expect(oracleReport.isScopeTooBroad).toBe(false);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
 
   it("falls back to a per-line estimate limited to changed non-blank lines when parsing fails", async () => {
-    const { tempDir, base, source } = createPreflightRepo("const = ;\nlet x = ;\n", "const = ;\nlet y = ;\n\n\n");
+    const { tempDir, base, source } = createPreflightRepo("const = ;\nlet x = ;\n", "const = ;\nlet y = ;\n  \n\n");
 
     try {
       const report = await calculateMutationPreflight({ cwd: tempDir, since: base, concurrency: 1 });
