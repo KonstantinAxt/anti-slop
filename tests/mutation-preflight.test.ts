@@ -187,6 +187,18 @@ describe("Mutation Preflight & Capacity Estimator", () => {
     }
   });
 
+  it("adds up the fallback estimate across separate changed hunks", async () => {
+    const { tempDir, base } = createPreflightRepo("let a = ;\nlet b = ;\nlet c = ;\n", "let A = ;\nlet b = ;\nlet C = ;\n");
+
+    try {
+      const report = await calculateMutationPreflight({ cwd: tempDir, since: base, concurrency: 1 });
+
+      expect(report.fileEstimates[0]?.estimatedMutants).toBe(2);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("detects scope too broad when mutable files exceed max limit", async () => {
     const report = await calculateMutationPreflight({
       cwd: process.cwd(),
