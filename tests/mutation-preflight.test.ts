@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -104,6 +105,38 @@ describe("Mutation Preflight & Capacity Estimator", () => {
       expect(report.fileEstimates).toHaveLength(1);
       expect(report.fileEstimates[0]?.estimatedMutants).toBe(2);
       expect(report.estimatedColdSeconds).toBeGreaterThan(0);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("estimates only changed lines when preflighting a Git diff", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "preflight-lines-"));
+    const source = path.join(tempDir, "calculator.ts");
+    const git = (...args: string[]): string => execFileSync("git", args, { cwd: tempDir, encoding: "utf-8" });
+    fs.writeFileSync(source, "export function add(a: number, b: number): number { return a + b; }\nexport function sub(a: number, b: number): number { return a - b; }\n");
+    git("init", "-q");
+    git("config", "user.email", "test@example.invalid");
+    git("config", "user.name", "Test");
+    git("add", ".");
+    git("commit", "-qm", "base");
+    const base = git("rev-parse", "HEAD").trim();
+    fs.writeFileSync(source, "export function add(a: number, b: number): number { return a + b; }\nexport function sub(a: number, b: number): number { return a - b - 1; }\n");
+    git("add", ".");
+    git("commit", "-qm", "change sub");
+
+    try {
+      const report = await calculateMutationPreflight({ cwd: tempDir, since: base, concurrency: 1 });
+
+      expect(report.mutableFiles).toEqual(["calculator.ts"]);
+      expect(report.fileEstimates).toHaveLength(1);
+      expect(report.fileEstimates[0]?.lines).toBe(1);
+      const fullReport = await calculateMutationPreflight({ cwd: tempDir, files: [source], concurrency: 1 });
+      const changedLineMutants = report.fileEstimates[0]?.estimatedMutants ?? 0;
+
+      expect(changedLineMutants).toBeGreaterThan(0);
+
+      expect(changedLineMutants).toBeLessThan(fullReport.fileEstimates[0]?.estimatedMutants ?? 0);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }

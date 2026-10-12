@@ -1,7 +1,7 @@
+import { getChangedLineRangesSince, getDiffFilesSince, getStagedFiles, getTrackedCodeFiles } from "../src/git.js";
 import { describe, it, expect, vi } from "vitest";
 import { execFileSync, execSync } from "node:child_process";
 import * as path from "node:path";
-import { getStagedFiles, getDiffFilesSince, getTrackedCodeFiles } from "../src/git.js";
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
   return {
@@ -69,6 +69,56 @@ describe("Git Diff Helpers (src/git.ts)", () => {
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
     });
+  });
+
+  it("parses added and changed lines from multiple diff hunks and omits deletions", () => {
+    const stdout = [
+      "diff --git a/src/first.ts b/src/first.ts",
+      "--- a/src/first.ts",
+      "+++ b/src/first.ts",
+      "@@ -2,0 +3,2 @@",
+      "+added",
+      "+line",
+      "@@ -8,2 +10,1 @@",
+      "-old",
+      "-older",
+      "+changed",
+      "diff --git a/src/new.ts b/src/new.ts",
+      "new file mode 100644",
+      "--- /dev/null",
+      "+++ b/src/new.ts",
+      "@@ -0,0 +1,2 @@",
+      "+new",
+      "+file",
+      "diff --git a/src/deleted.ts b/src/deleted.ts",
+      "--- a/src/deleted.ts",
+      "+++ b/src/deleted.ts",
+      "@@ -4,2 +4,0 @@",
+      "-gone",
+      "-lines",
+      "",
+    ].join("\n");
+    vi.mocked(execSync).mockReturnValue(stdout as never);
+
+    const ranges = getChangedLineRangesSince(cwd, "origin/main");
+
+    expect(ranges).toEqual(new Map([
+      [path.resolve(cwd, "src/first.ts"), [{ start: 3, end: 4 }, { start: 10, end: 10 }]],
+      [path.resolve(cwd, "src/new.ts"), [{ start: 1, end: 2 }]],
+    ]));
+    expect(execSync).toHaveBeenLastCalledWith("git diff --unified=0 origin/main...HEAD", {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  });
+
+  it("returns an empty range map when git diff fails", () => {
+    vi.mocked(execSync).mockImplementation(() => {
+      throw new Error("fatal: unknown revision");
+    });
+
+    expect(getChangedLineRangesSince(cwd, "missing-ref")).toEqual(new Map());
   });
 
   it("returns an empty array when git execution fails or throws", () => {
