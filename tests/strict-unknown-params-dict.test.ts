@@ -79,8 +79,6 @@ describe("slop/no-unknown-dictionary-values", () => {
   ])("allows %s", async (_, code) => {
     expect(await messagesFor(DICT_RULE, code)).toEqual([]);
   });
-
-
 });
 
 describe("strict-unknown opt-in", () => {
