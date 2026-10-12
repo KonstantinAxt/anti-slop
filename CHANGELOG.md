@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.52](https://github.com/KonstantinAxt/anti-slop/compare/anti-slop-v0.1.51...anti-slop-v0.1.52) (2026-10-12)
+
+
+### Features
+
+* **rules:** add opt-in no-unknown-parameters and no-unknown-dictionary-values rules ([#44](https://github.com/KonstantinAxt/anti-slop/issues/44)) ([3360eba](https://github.com/KonstantinAxt/anti-slop/commit/3360eba589dad9d4d2817f7ad51ef67d36dd54ae))
+
 ## [0.1.51](https://github.com/KonstantinAxt/anti-slop/compare/anti-slop-v0.1.50...anti-slop-v0.1.51) (2026-10-12)
 
 
