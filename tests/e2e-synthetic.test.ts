@@ -130,5 +130,5 @@ describe("E2E Synthetic AI Slop Repo Verification", () => {
     } finally {
       fs.rmSync(sandboxDir, { recursive: true, force: true });
     }
-  }, 25000);
+  });
 });
