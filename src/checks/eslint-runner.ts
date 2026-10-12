@@ -16,10 +16,7 @@ import slop from "eslint-plugin-slop";
 import { noEnvShellCommandRule } from "./no-env-shell-command-rule.js";
 import { noRedundantPresenceCheckRule } from "./no-redundant-presence-check-rule.js";
 import { requireAssertionJustificationRule } from "./require-assertion-justification-rule.js";
-import {
-  noUnknownParametersRule,
-  noUnknownReturnsRule,
-} from "./strict-unknown-rules.js";
+import { noUnknownReturnsRule } from "./strict-unknown-rules.js";
 import unicorn from "eslint-plugin-unicorn";
 import useClientPlugin from "eslint-plugin-use-client";
 import barrelFilesPlugin from "eslint-plugin-barrel-files";
@@ -945,7 +942,6 @@ function getEslint(): ESLint {
         ...slop.rules,
         "no-env-shell-command": noEnvShellCommandRule,
         "no-redundant-presence-check": noRedundantPresenceCheckRule,
-        "no-unknown-parameters": noUnknownParametersRule,
         "no-unknown-returns": noUnknownReturnsRule,
       },
     },
@@ -1045,7 +1041,6 @@ function getEslint(): ESLint {
           "slop/no-jargon": "warn",
           "slop/no-env-shell-command": "error",
           "slop/no-redundant-presence-check": "error",
-          "slop/no-unknown-parameters": "error",
           "slop/no-unknown-returns": "error",
           "no-warning-comments": [
             "error",
@@ -1408,10 +1403,6 @@ const RULE_WHY_AND_SUGGESTIONS: Record<string, { why: string; suggestion?: strin
   "slop/no-redundant-presence-check": {
     why: "TypeScript does not narrow Map#get after Map#has (microsoft/TypeScript#13086). Checking presence before get introduces redundant hash lookups or unreachable error guards.",
     suggestion: "Look up the key once with .get() and narrow the result or use nullish coalescing (??).",
-  },
-  "slop/no-unknown-parameters": {
-    why: "Type evidence hygiene: Accepting 'unknown' in function parameters forces callers to discard type evidence or requires internal assertions. Validate at boundaries using a schema or use concrete domain types/generics (same-file AST only).",
-    suggestion: "Replace 'unknown' with a concrete domain type, a generic type parameter, or validate input at the caller boundary.",
   },
   "slop/no-unknown-returns": {
     why: "Type evidence hygiene: Returning 'unknown', 'Promise<unknown>', or 'PromiseLike<unknown>' discards type evidence at contract boundaries and defers validation to callers (same-file AST only).",

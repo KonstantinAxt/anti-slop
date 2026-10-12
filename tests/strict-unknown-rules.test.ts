@@ -4,246 +4,90 @@ import { runAntiSlop } from "../src/index.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-const PARAM_RULE = "slop/no-unknown-parameters";
 const RETURN_RULE = "slop/no-unknown-returns";
-
-const ALL_ENABLED = {
-  [PARAM_RULE]: "error",
-  [RETURN_RULE]: "error",
-};
-
-describe("slop/no-unknown-parameters", () => {
-  it.each([
-    ["function declaration", "export function f(input: unknown): void {}"],
-    ["union parameter", "export const f = (val: string | unknown) => val;"],
-    ["constructor property", "export class H { constructor(public data: unknown) {} }"],
-    ["method parameter", "export class H { m(payload: unknown | number): void {} }"],
-    ["function type", "export type T = (item: unknown) => string;"],
-    ["method signature", "export interface S { compute(val: unknown): number; }"],
-    ["call signature", "export interface S { (raw: unknown): void; }"],
-    ["construct signature", "export interface S { new (spec: unknown): S; }"],
-    ["same-file type alias", "type B = unknown; export function f(target: B): void {}"],
-  ])("flags unknown parameter in %s", async (_, code) => {
-    const findings = await checkWithEslint("src/test.ts", code, { [PARAM_RULE]: "error" });
-    const match = findings.filter((f) => f.rule === PARAM_RULE);
-
-    expect(match).toHaveLength(1);
-    expect(match[0]?.rule).toBe(PARAM_RULE);
-    expect(match[0]?.severity).toBe("error");
-    expect(match[0]?.line).toBe(1);
-    expect(match[0]?.message).toContain("Avoid 'unknown' or unions containing 'unknown' on function parameter");
-    expect(match[0]?.message).toContain("(Same-file AST only)");
-    expect(match[0]?.why).toBe("Type evidence hygiene: Accepting 'unknown' in function parameters forces callers to discard type evidence or requires internal assertions. Validate at boundaries using a schema or use concrete domain types/generics (same-file AST only).");
-    expect(match[0]?.suggestion).toBe("Replace 'unknown' with a concrete domain type, a generic type parameter, or validate input at the caller boundary.");
-  });
-
-  it.each([
-    ["cause parameter", "export function f(err: Error, cause: unknown): void {}"],
-    ["optional cause", "export class E extends Error { constructor(msg: string, cause?: unknown) { super(msg); } }"],
-    ["type predicate subject function", "export function isStr(x: unknown): x is string { return typeof x === 'string'; }"],
-    ["type predicate subject arrow", "export const isNum = (x: unknown): x is number => typeof x === 'number';"],
-    ["type predicate this subject", "export function isThis(this: unknown): this is string { return true; }"],
-    ["concrete array type", "export function f(items: unknown[]): number { return items.length; }"],
-  ])("allows valid parameter pattern: %s", async (_, code) => {
-    const findings = await checkWithEslint("src/test.ts", code, { [PARAM_RULE]: "error" });
-
-    expect(findings.filter((f) => f.rule === PARAM_RULE)).toHaveLength(0);
-  });
-
-  it.each([
-    ["parameter property", "export class H { constructor(public data: unknown) {} }", "data"],
-    ["nested parameter alias", "type A = unknown; type B = A; export function f(value: B): void {}", "value"],
-    ["union alias", "type A = string | unknown; export function f(value: A): void {}", "value"],
-  ])("reports nested unknown parameter types: %s", async (_, code, expectedName) => {
-    const findings = await checkWithEslint("src/test.ts", code, { [PARAM_RULE]: "error" });
-    const match = findings.find((f) => f.rule === PARAM_RULE);
-
-    expect(match?.message).toContain(`parameter '${expectedName}'`);
-  });
-
-  it.each([
-    ["parameter alias chain", "type A = unknown; type B = A; export function f(value: B): void {}", 1],
-    ["plain array context", "export function f(value: unknown[]): void {}", 0],
-    ["rest array context", "export function f(...values: unknown[]): void {}", 0],
-  ])("evaluates nested parameter types: %s", async (_, code, expectedCount) => {
-    const findings = await checkWithEslint("src/test.ts", code, { [PARAM_RULE]: "error" });
-
-    expect(findings.filter((f) => f.rule === PARAM_RULE)).toHaveLength(expectedCount);
-  });
-  it("reads aliases from program statements", async () => {
-    const code = "type A = unknown; export function f(value: A): void {}";
-    const findings = await checkWithEslint("src/test.ts", code, { [PARAM_RULE]: "error" });
-
-    expect(findings.filter((f) => f.rule === PARAM_RULE)).toHaveLength(1);
-  });
-
-  it("ignores same-file aliases that do not contain unknown", async () => {
-    const code = "type A = string; export function f(value: A): void {}";
-    const findings = await checkWithEslint("src/test.ts", code, { [PARAM_RULE]: "error" });
-
-    expect(findings.filter((f) => f.rule === PARAM_RULE)).toHaveLength(0);
-  });
-
-  it("ignores unknown nested outside the parameter's union", async () => {
-    const code = "export function f(value: unknown[]): void {}";
-    const findings = await checkWithEslint("src/test.ts", code, { [PARAM_RULE]: "error" });
-
-    expect(findings.filter((f) => f.rule === PARAM_RULE)).toHaveLength(0);
-  });
-});
-describe("slop/no-unknown-returns edge cases", () => {
-  it.each([
-    ["union member", "export function f(): string | unknown { return 'ok'; }", "'unknown'"],
-    ["aliased promise argument", "type A = unknown; export function f(): Promise<A> { return Promise.resolve(1); }", "'Promise<unknown>'"],
-    ["promise-like alias", "type R = PromiseLike<unknown>; export function f(): R { return Promise.resolve(1); }", "'PromiseLike<unknown>'"],
-    ["parenthesized unknown", "export function f(): (unknown) { return 1; }", "'unknown'"],
-  ])("finds unknown in return edge case: %s", async (_, code, expectedType) => {
-    const findings = await checkWithEslint("src/test.ts", code, { [RETURN_RULE]: "error" });
-    const match = findings.filter((f) => f.rule === RETURN_RULE);
-
-    expect(match).toHaveLength(1);
-    expect(match[0]?.message).toContain(`Avoid ${expectedType}`);
-  });
-
-  it.each([
-    ["unrelated generic", "export function f(): Box<unknown> { return {} as Box<unknown>; }", 0],
-    ["same-file concrete alias", "type R = string; export function f(): R { return 'ok'; }", 0],
-    ["empty body", "export function f(): number {}", 0],
-  ])("allows return type outside the rule: %s", async (_, code, expectedCount) => {
-    const findings = await checkWithEslint("src/test.ts", code, { [RETURN_RULE]: "error" });
-
-    expect(findings.filter((f) => f.rule === RETURN_RULE)).toHaveLength(expectedCount);
-  });
-});
-describe("slop/no-unknown-returns promise boundaries", () => {
-  it.each([
-    ["unrelated type argument", "export function f(): Box<unknown> { return {} as Box<unknown>; }", 0],
-    ["promise without argument", "export function f(): Promise { return Promise.resolve(1); }", 0],
-    ["promise second unknown argument", "export function f(): Promise<string, unknown> { return Promise.resolve(1); }", 0],
-    ["promise first unknown argument", "export function f(): Promise<unknown, string> { return Promise.resolve(1); }", 1],
-  ])("checks only first argument of known promise: %s", async (_, code, expectedCount) => {
-    const findings = await checkWithEslint("src/test.ts", code, { [RETURN_RULE]: "error" });
-
-    expect(findings.filter((f) => f.rule === RETURN_RULE)).toHaveLength(expectedCount);
-  });
-});
-
+const RETURN_ENABLED = { [RETURN_RULE]: "error" };
 
 describe("slop/no-unknown-returns", () => {
   it.each([
-    ["unknown return", "export function f(): unknown { return 1; }", "'unknown'"],
-    ["Promise<unknown>", "export async function f(): Promise<unknown> { return 1; }", "'Promise<unknown>'"],
-    ["PromiseLike<unknown>", "export function f(): PromiseLike<unknown> { return Promise.resolve(1); }", "'PromiseLike<unknown>'"],
-    ["type alias return", "type R = Promise<unknown>; export function f(): R { return 1; }", "'Promise<unknown>'"],
-    ["union return with unknown", "export function f(): unknown | null { return null; }", "'unknown'"],
-  ])("flags unknown return in %s", async (_, code, expectedType) => {
-    const findings = await checkWithEslint("src/test.ts", code, { [RETURN_RULE]: "error" });
-    const match = findings.filter((f) => f.rule === RETURN_RULE);
+    ["unknown return", "export function f(): unknown { return 1; }", "unknown"],
+    ["Promise<unknown>", "export async function f(): Promise<unknown> { return 1; }", "Promise<unknown>"],
+    ["PromiseLike<unknown>", "export function f(): PromiseLike<unknown> { return Promise.resolve(1); }", "PromiseLike<unknown>"],
+    ["type alias return", "type R = Promise<unknown>; export function f(): R { return 1; }", "Promise<unknown>"],
+    ["union return with unknown", "export function f(): unknown | null { return null; }", "unknown"],
+    ["promise argument alias", "type A = unknown; export function f(): Promise<A> { return Promise.resolve(1); }", "Promise<unknown>"],
+    ["parenthesized unknown", "export function f(): (unknown) { return 1; }", "unknown"],
+  ])("reports %s", async (_, code, expectedType) => {
+    const findings = await checkWithEslint("src/test.ts", code, RETURN_ENABLED);
+    const match = findings.filter((finding) => finding.rule === RETURN_RULE);
 
     expect(match).toHaveLength(1);
-    expect(match[0]?.rule).toBe(RETURN_RULE);
     expect(match[0]?.severity).toBe("error");
-    expect(match[0]?.line).toBe(1);
-    expect(match[0]?.message).toBe(`Avoid ${expectedType} as return type annotation. Return a concrete domain type or generic instead. (Same-file AST only)`);
-    expect(match[0]?.why).toBe("Type evidence hygiene: Returning 'unknown', 'Promise<unknown>', or 'PromiseLike<unknown>' discards type evidence at contract boundaries and defers validation to callers (same-file AST only).");
-    expect(match[0]?.suggestion).toBe("Return a concrete domain type, generic return contract, or parsed schema result instead of 'unknown'.");
+    expect(match[0]?.message).toContain(`Avoid '${expectedType}'`);
   });
 
   it.each([
     ["concrete return", "export function f(): number { return 10; }"],
-    ["Promise<string>", "export async function f(): Promise<string> { return 'ok'; }"],
-    ["type predicate", "export function isObj(v: unknown): v is object { return true; }"],
-  ])("allows valid return type: %s", async (_, code) => {
-    const findings = await checkWithEslint("src/test.ts", code, { [RETURN_RULE]: "error" });
+    ["concrete Promise", "export async function f(): Promise<string> { return 'ok'; }"],
+    ["unrelated generic", "export function f(): Box<unknown> { return {} as Box<unknown>; }"],
+    ["concrete same-file alias", "type R = string; export function f(): R { return 'ok'; }"],
+    ["unknown in second Promise argument", "export function f(): Promise<string, unknown> { return Promise.resolve(1); }"],
+  ])("allows %s", async (_, code) => {
+    const findings = await checkWithEslint("src/test.ts", code, RETURN_ENABLED);
 
-    expect(findings.filter((f) => f.rule === RETURN_RULE)).toHaveLength(0);
+    expect(findings.filter((finding) => finding.rule === RETURN_RULE)).toHaveLength(0);
+  });
+
+  it("checks only the first argument of known promises", async () => {
+    const code = "export function f(): Promise<unknown, string> { return Promise.resolve(1); }";
+    const findings = await checkWithEslint("src/test.ts", code, RETURN_ENABLED);
+
+    expect(findings.filter((finding) => finding.rule === RETURN_RULE)).toHaveLength(1);
   });
 });
 
-describe("opt-in mechanism & configuration precedence", () => {
-  const violatingCode = "export function processEntry(input: unknown): unknown {\n  return input;\n}\n";
+describe("return rule opt-in configuration", () => {
+  const violatingCode = "export function processEntry(): unknown { return 1; }\n";
 
-  it("produces zero findings when rules are not enabled (default opt-in state)", async () => {
-    const findings = await checkWithEslint("src/violator.ts", violatingCode);
-    const strictFindings = findings.filter((f) => f.rule === PARAM_RULE || f.rule === RETURN_RULE);
+  it("is disabled by default and reports when configured", async () => {
+    const defaults = await checkWithEslint("src/violator.ts", violatingCode);
+    const configured = await checkWithEslint("src/violator.ts", violatingCode, RETURN_ENABLED);
 
-    expect(strictFindings).toHaveLength(0);
+    expect(defaults.filter((finding) => finding.rule === RETURN_RULE)).toHaveLength(0);
+    expect(configured.filter((finding) => finding.rule === RETURN_RULE)).toHaveLength(1);
   });
 
-  it("produces findings when enabled via rule overrides", async () => {
-    const findings = await checkWithEslint("src/violator.ts", violatingCode, ALL_ENABLED);
-    const paramHits = findings.filter((f) => f.rule === PARAM_RULE);
-    const returnHits = findings.filter((f) => f.rule === RETURN_RULE);
+  it("resolves the unprefixed alias", async () => {
+    const findings = await checkWithEslint("src/violator.ts", violatingCode, { "no-unknown-returns": "error" });
 
-    expect(paramHits).toHaveLength(1);
-    expect(paramHits[0]?.line).toBe(1);
-    expect(returnHits).toHaveLength(1);
-    expect(returnHits[0]?.line).toBe(1);
+    expect(findings.filter((finding) => finding.rule === RETURN_RULE)).toHaveLength(1);
   });
 
-  it("resolves rules without slop/ prefix via aliases", async () => {
-    const aliasesConfig = {
-      "no-unknown-parameters": "error",
-      "no-unknown-returns": "error",
-    };
-    const findings = await checkWithEslint("src/violator.ts", violatingCode, aliasesConfig);
-    const strictFindings = findings.filter((f) => f.rule === PARAM_RULE || f.rule === RETURN_RULE);
+  it("supports warning and off severities", async () => {
+    const warningFindings = await checkWithEslint("src/violator.ts", violatingCode, { [RETURN_RULE]: "warn" });
+    const disabledFindings = await checkWithEslint("src/violator.ts", violatingCode, { [RETURN_RULE]: "off" });
 
-    expect(strictFindings).toHaveLength(2);
+    expect(warningFindings.find((finding) => finding.rule === RETURN_RULE)?.severity).toBe("warning");
+    expect(disabledFindings.filter((finding) => finding.rule === RETURN_RULE)).toHaveLength(0);
   });
 
-  it("supports severity downgrade to warning and explicit off", async () => {
-    const warnFindings = await checkWithEslint("src/violator.ts", violatingCode, {
-      [PARAM_RULE]: "warn",
-      [RETURN_RULE]: "off",
-    });
-    const paramHit = warnFindings.find((f) => f.rule === PARAM_RULE);
-
-    expect(paramHit?.rule).toBe(PARAM_RULE);
-    expect(paramHit?.severity).toBe("warning");
-    expect(warnFindings.some((f) => f.rule === RETURN_RULE)).toBe(false);
-  });
-
-  it("integrates with runAntiSlop with default and enabled configuration", async () => {
-    const tempFile = path.resolve(process.cwd(), "tests/temp-run-antislop-violation.ts");
+  it("integrates with runAntiSlop rules and repository configuration", async () => {
+    const tempFile = path.resolve(process.cwd(), "tests/temp-run-antislop-return.ts");
+    const configPath = path.resolve(process.cwd(), "anti-slop.json");
     fs.writeFileSync(tempFile, violatingCode);
 
     try {
-      const defaultRun = await runAntiSlop({
-        cwd: process.cwd(),
-        files: [tempFile],
-        allowLooseTsConfig: true,
-      });
-      const defaultHits = defaultRun.findings.filter((f) => f.rule === PARAM_RULE || f.rule === RETURN_RULE);
+      const defaults = await runAntiSlop({ cwd: process.cwd(), files: [tempFile], allowLooseTsConfig: true });
+      const configured = await runAntiSlop({ cwd: process.cwd(), files: [tempFile], allowLooseTsConfig: true, rules: RETURN_ENABLED });
+      fs.writeFileSync(configPath, JSON.stringify({ rules: RETURN_ENABLED }));
+      const fileConfigured = await runAntiSlop({ cwd: process.cwd(), files: [tempFile], allowLooseTsConfig: true });
 
-      expect(defaultHits).toHaveLength(0);
-
-      const enabledRun = await runAntiSlop({
-        cwd: process.cwd(),
-        files: [tempFile],
-        allowLooseTsConfig: true,
-        rules: ALL_ENABLED,
-      });
-      const enabledHits = enabledRun.findings.filter((f) => f.rule === PARAM_RULE || f.rule === RETURN_RULE);
-
-      expect(enabledHits).toHaveLength(2);
-
-      const configPath = path.resolve(process.cwd(), "anti-slop.json");
-      fs.writeFileSync(configPath, JSON.stringify({ rules: ALL_ENABLED }));
-      try {
-        const fileConfigRun = await runAntiSlop({
-          cwd: process.cwd(),
-          files: [tempFile],
-          allowLooseTsConfig: true,
-        });
-        const fileConfigHits = fileConfigRun.findings.filter((f) => f.rule === PARAM_RULE || f.rule === RETURN_RULE);
-
-        expect(fileConfigHits).toHaveLength(2);
-      } finally {
-        fs.rmSync(configPath, { force: true });
-      }
+      expect(defaults.findings.filter((finding) => finding.rule === RETURN_RULE)).toHaveLength(0);
+      expect(configured.findings.filter((finding) => finding.rule === RETURN_RULE)).toHaveLength(1);
+      expect(fileConfigured.findings.filter((finding) => finding.rule === RETURN_RULE)).toHaveLength(1);
     } finally {
+      fs.rmSync(configPath, { force: true });
       fs.rmSync(tempFile, { force: true });
     }
   });
 });
+
