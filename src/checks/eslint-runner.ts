@@ -869,6 +869,8 @@ if (!baseConsistentTypeAssertionsRule || typeof baseConsistentTypeAssertionsRule
   throw new Error("@typescript-eslint/eslint-plugin no longer exports a consistent-type-assertions rule module");
 }
 
+const skipAssertion = (): void => undefined;
+
 const tsPluginWithNamedConstants: ESLint.Plugin = {
   ...eslintTsPlugin,
   rules: {
@@ -891,18 +893,19 @@ const tsPluginWithNamedConstants: ESLint.Plugin = {
     "consistent-type-assertions": {
       ...baseConsistentTypeAssertionsRule,
       create(context: Rule.RuleContext) {
-        const listeners = baseConsistentTypeAssertionsRule.create(context);
+        const { TSAsExpression: checkAs = skipAssertion, TSTypeAssertion: checkAngle = skipAssertion, ...listeners } =
+          baseConsistentTypeAssertionsRule.create(context);
 
         return {
           ...listeners,
           TSAsExpression(node: Rule.Node) {
             if (!hasJustificationOnLines(node, context, DEFAULT_ASSERTION_JUSTIFICATION_MARKERS)) {
-              listeners.TSAsExpression?.(node);
+              checkAs(node);
             }
           },
           TSTypeAssertion(node: Rule.Node) {
             if (!hasJustificationOnLines(node, context, DEFAULT_ASSERTION_JUSTIFICATION_MARKERS)) {
-              listeners.TSTypeAssertion?.(node);
+              checkAngle(node);
             }
           },
         };
