@@ -17,6 +17,7 @@ import type { Comment as ESTreeComment, Node as ESTreeNode } from "estree";
 const RULE_NAME = "comment-discipline/require-assertion-justification";
 const EXPECTED_MESSAGE =
   "Type assertion requires an invariant justification comment (e.g. '// SAFETY: <reason>') on the same line or immediately preceding line.";
+const CONSISTENT_ASSERTION_RULE = "@typescript-eslint/consistent-type-assertions";
 
 async function checkRule(filePath: string, code: string): Promise<Finding[]> {
   const findings = await checkWithEslint(filePath, code);
@@ -52,6 +53,45 @@ async function lintWithCustomOptions(code: string, options?: RuleOptions | null)
 }
 
 describe("comment-discipline/require-assertion-justification", () => {
+  describe("consistent assertion policy", () => {
+    it("keeps the never finding for unjustified assertions and clears it for valid SAFETY comments", async () => {
+      const bare = await checkWithEslint("src/example.ts", "const value = input as string;");
+      const justified = await checkWithEslint(
+        "src/example.ts",
+        "// SAFETY: input was parsed as a string\nconst value = input as string;",
+      );
+      const empty = await checkWithEslint("src/example.ts", "const value = input as string; // SAFETY:");
+      const invalid = await checkWithEslint("src/example.ts", "// SAFETY comment\nconst value = input as string;");
+
+      expect(bare.filter((finding) => finding.rule === CONSISTENT_ASSERTION_RULE)).toHaveLength(1);
+      expect(justified.filter((finding) => finding.rule === CONSISTENT_ASSERTION_RULE)).toHaveLength(0);
+      expect(empty.filter((finding) => finding.rule === CONSISTENT_ASSERTION_RULE)).toHaveLength(1);
+      expect(invalid.filter((finding) => finding.rule === CONSISTENT_ASSERTION_RULE)).toHaveLength(1);
+    });
+
+    it("preserves angle-bracket coverage and chained assertion errors", async () => {
+      const justifiedAngleBracket = await checkWithEslint(
+        "src/example.ts",
+        "// SAFETY: input was parsed as a string\nconst value = <string>input;",
+      );
+      const unjustifiedAngleBracket = await checkWithEslint("src/example.ts", "const value = <string>input;");
+      const justifiedChain = await checkWithEslint(
+        "src/example.ts",
+        "// SAFETY: input was parsed\nconst value = input as unknown as string;",
+      );
+
+      expect(justifiedAngleBracket.some((finding) => finding.rule === CONSISTENT_ASSERTION_RULE)).toBe(false);
+      expect(unjustifiedAngleBracket.some((finding) => finding.rule === CONSISTENT_ASSERTION_RULE)).toBe(true);
+      expect(justifiedChain.some((finding) => finding.rule === "slop/no-chained-type-assertions")).toBe(true);
+    });
+
+    it("keeps as const behavior unchanged", async () => {
+      const findings = await checkWithEslint("src/example.ts", "const value = input as const;");
+
+      expect(findings.some((finding) => finding.rule === CONSISTENT_ASSERTION_RULE)).toBe(false);
+    });
+  });
+
   describe("acceptance criteria", () => {
     it("flags bare 'as Foo' assertions without a justification comment", async () => {
       const findings = await checkRule("src/example.ts", "const x = value as Foo;");

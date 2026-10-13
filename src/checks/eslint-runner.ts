@@ -16,7 +16,11 @@ import slop from "eslint-plugin-slop";
 import { noEnvShellCommandRule } from "./no-env-shell-command-rule.js";
 import { noRedundantPresenceCheckRule } from "./no-redundant-presence-check-rule.js";
 import { noReflectEscapeRule } from "./no-reflect-escape-rule.js";
-import { requireAssertionJustificationRule } from "./require-assertion-justification-rule.js";
+import {
+  DEFAULT_ASSERTION_JUSTIFICATION_MARKERS,
+  hasJustificationOnLines,
+  requireAssertionJustificationRule,
+} from "./require-assertion-justification-rule.js";
 import { noUnknownDictionaryValuesRule, noUnknownParametersRule, noUnknownReturnsRule } from "./strict-unknown-rules.js";
 import unicorn from "eslint-plugin-unicorn";
 import useClientPlugin from "eslint-plugin-use-client";
@@ -857,9 +861,15 @@ function isNamedMagicNumber(node: ESTreeNode, ancestors: ESTreeNode[]): boolean 
 
 const eslintTsPlugin: ESLint.Plugin = tsPlugin;
 const baseMagicNumbersRule = eslintTsPlugin.rules?.["no-magic-numbers"];
+const baseConsistentTypeAssertionsRule = eslintTsPlugin.rules?.["consistent-type-assertions"];
 if (!baseMagicNumbersRule || typeof baseMagicNumbersRule === "function") {
   throw new Error("@typescript-eslint/eslint-plugin no longer exports a no-magic-numbers rule module");
 }
+if (!baseConsistentTypeAssertionsRule || typeof baseConsistentTypeAssertionsRule === "function") {
+  throw new Error("@typescript-eslint/eslint-plugin no longer exports a consistent-type-assertions rule module");
+}
+
+const skipAssertion = (): void => undefined;
 
 const tsPluginWithNamedConstants: ESLint.Plugin = {
   ...eslintTsPlugin,
@@ -876,6 +886,27 @@ const tsPluginWithNamedConstants: ESLint.Plugin = {
           Literal(node: Rule.Node) {
             if (isNamedMagicNumber(node, context.sourceCode.getAncestors(node))) return;
             reportLiteral?.(node);
+          },
+        };
+      },
+    },
+    "consistent-type-assertions": {
+      ...baseConsistentTypeAssertionsRule,
+      create(context: Rule.RuleContext) {
+        const { TSAsExpression: checkAs = skipAssertion, TSTypeAssertion: checkAngle = skipAssertion, ...listeners } =
+          baseConsistentTypeAssertionsRule.create(context);
+
+        return {
+          ...listeners,
+          TSAsExpression(node: Rule.Node) {
+            if (!hasJustificationOnLines(node, context, DEFAULT_ASSERTION_JUSTIFICATION_MARKERS)) {
+              checkAs(node);
+            }
+          },
+          TSTypeAssertion(node: Rule.Node) {
+            if (!hasJustificationOnLines(node, context, DEFAULT_ASSERTION_JUSTIFICATION_MARKERS)) {
+              checkAngle(node);
+            }
           },
         };
       },
@@ -1013,10 +1044,8 @@ function getEslint(): ESLint {
           "jsx-a11y/aria-role": "error",
 
           // Move #3 Strict TS rules
-          "@typescript-eslint/consistent-type-assertions": [
-            "warn",
-            { assertionStyle: "never" },
-          ],
+          // A valid SAFETY comment suppresses this upstream generic assertion rule.
+          "@typescript-eslint/consistent-type-assertions": ["warn", { assertionStyle: "never" }],
           "@typescript-eslint/explicit-function-return-type": [
             "warn",
             {
@@ -1496,8 +1525,8 @@ const RULE_WHY_AND_SUGGESTIONS: Record<string, { why: string; suggestion?: strin
     suggestion: "Move design justifications and benchmark comparisons to the PR description or an ADR; retain only a concise summary of the active invariant in code.",
   },
   "comment-discipline/require-assertion-justification": {
-    why: "Type assertions bypass TypeScript's static type checker and create unverified invariants. Requiring an explicit justification ensures the invariant is documented and auditable.",
-    suggestion: "Add a comment starting with 'SAFETY:' (or configured marker) followed by non-empty text explaining why the assertion is sound, or validate the value at the boundary.",
+    why: "Type assertions bypass TypeScript's static type checker and create unverified invariants. A valid justification documents the invariant and silences the generic 'never assert' warning.",
+    suggestion: "Add a valid SAFETY: comment with non-empty text explaining why the assertion is sound, or validate the value at the boundary.",
   },
 };
 
