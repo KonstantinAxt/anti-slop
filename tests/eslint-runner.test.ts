@@ -325,6 +325,7 @@ describe("ESLint Bundled Plugins Runner (sonarjs, effects, boundaries, vitest, s
       const name = "safe";
       export function run(flag: boolean): void {
         execSync("echo " + "safe");
+        spawn("ls", [process.env.TOKEN ?? ""], { shell: false });
         execSync(flag ? "ls" : "pwd");
         execSync(name ?? "ls");
         spawn("ls", ["-l"], { shell: true });
