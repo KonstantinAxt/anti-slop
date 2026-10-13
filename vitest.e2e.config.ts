@@ -10,7 +10,6 @@ export default defineConfig({
   },
   test: {
     pool: "threads",
-    fileParallelism: false,
     testTimeout: 60000,
     hookTimeout: 60000,
     teardownTimeout: 60000,
