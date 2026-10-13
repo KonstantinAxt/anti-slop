@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.55](https://github.com/KonstantinAxt/anti-slop/compare/anti-slop-v0.1.54...anti-slop-v0.1.55) (2026-10-13)
+
+
+### Bug Fixes
+
+* **rules:** let SAFETY justifications silence consistent-type-assertions ([#55](https://github.com/KonstantinAxt/anti-slop/issues/55)) ([7792069](https://github.com/KonstantinAxt/anti-slop/commit/7792069b5c7c12ebbe47ff8a6efe40f086def9de)), closes [#47](https://github.com/KonstantinAxt/anti-slop/issues/47)
+
 ## [0.1.54](https://github.com/KonstantinAxt/anti-slop/compare/anti-slop-v0.1.53...anti-slop-v0.1.54) (2026-10-13)
 
 
