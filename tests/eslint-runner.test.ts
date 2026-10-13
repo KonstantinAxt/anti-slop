@@ -216,7 +216,134 @@ describe("ESLint Bundled Plugins Runner (sonarjs, effects, boundaries, vitest, s
     expect(envFindings.length).toBe(8);
   });
 
-  it("does not flag interprocedural patterns that require data-flow analysis", async () => {
+  for (const extension of [".ts", ".mjs", ".cjs"]) {
+    it(`flags one-hop environment values passed through functions in ${extension} files`, async () => {
+      const code = `
+        // SYNTHETIC
+        import { execSync } from "node:child_process";
+        function token(): string { return process.env.TOKEN ?? ""; }
+        execSync(` + "`echo ${token()}`" + `);
+        function run(value: string): void { execSync(` + "`echo ${value}`" + `); }
+        run(process.env.TOKEN ?? "");
+      `;
+
+      const findings = await checkWithEslint(`scripts/env-shell-probe${extension}`, code);
+      const envFindings = findings.filter((finding) => finding.rule === "slop/no-env-shell-command");
+
+      expect(envFindings.map((finding) => finding.line)).toEqual([5, 7]);
+      expect(envFindings.map((finding) => finding.message)).toEqual([
+        "Shell command built from environment variable. Hardcode the command or sanitize/allowlist the env value (CWE-78).",
+        "Environment variable passed to a same-file helper that builds a shell command from it. Hardcode the command or sanitize/allowlist the env value (CWE-78).",
+      ]);
+    });
+  }
+
+  it("does not flag imported helpers or non-environment arguments", async () => {
+    const importedHelperCode = `
+      import { run } from "./command-helper.mjs";
+      run(process.env.TOKEN ?? "");
+    `;
+    const safeArgumentsCode = `
+      import { execSync } from "node:child_process";
+      function token(): string { return "safe"; }
+      execSync(` + "`echo ${token()}`" + `);
+      function run(value: string): void { execSync(` + "`echo ${value}`" + `); }
+      run("safe");
+    `;
+
+    const importedFindings = await checkWithEslint("scripts/imported-helper.mjs", importedHelperCode);
+    const safeFindings = await checkWithEslint("scripts/safe-helper.ts", safeArgumentsCode);
+
+    expect(importedFindings.filter((finding) => finding.rule === "slop/no-env-shell-command").length).toBe(0);
+    expect(safeFindings.filter((finding) => finding.rule === "slop/no-env-shell-command").length).toBe(0);
+  });
+
+  it("follows arrow helpers, any return path, and only the parameter that reaches the command", async () => {
+    const code = `
+      // SYNTHETIC
+      import { execSync } from "node:child_process";
+      const token = () => process.env.TOKEN;
+      function pick(flag: boolean): string {
+        if (flag) {
+          return process.env.TOKEN ?? "";
+        }
+        return "safe";
+      }
+      execSync(token());
+      execSync(pick(true));
+      function run(first: string, second: string): void {
+        console.log(first);
+        execSync(\`\${first} \${second}\`);
+      }
+      run(process.env.TOKEN ?? "", "safe");
+      run("safe", process.env.TOKEN ?? "");
+      undeclaredHelper(process.env.TOKEN);
+    `;
+
+    const findings = await checkWithEslint("scripts/env-shell-arrow.ts", code);
+    const envLines = findings.filter((finding) => finding.rule === "slop/no-env-shell-command").map((finding) => finding.line);
+
+    expect(envLines).toEqual([11, 12, 17, 18]);
+  });
+
+  it("does not treat a parameter callback as a same-file helper", async () => {
+    const code = `
+      // SYNTHETIC
+      import { execSync } from "node:child_process";
+      export function wrap(callback: () => string): string {
+        execSync(\`echo \${callback()}\`);
+        return process.env.TOKEN ?? "";
+      }
+    `;
+
+    const findings = await checkWithEslint("scripts/env-shell-callback.ts", code);
+
+    expect(findings.filter((finding) => finding.rule === "slop/no-env-shell-command")).toEqual([]);
+  });
+
+  it("follows helper results through concatenation and conditionals", async () => {
+    const code = `
+      // SYNTHETIC
+      import { execSync } from "node:child_process";
+      const token = () => process.env.TOKEN;
+      export function run(flag: boolean): void {
+        execSync("echo " + token());
+        execSync(flag ? token() : "ls");
+      }
+    `;
+
+    const findings = await checkWithEslint("scripts/env-shell-operators.ts", code);
+    const envLines = findings.filter((finding) => finding.rule === "slop/no-env-shell-command").map((finding) => finding.line);
+
+    expect(envLines).toEqual([6, 7]);
+  });
+
+  it("does not flag safe operators, safe shell options, function values, or parameters that never reach the command", async () => {
+    const code = `
+      // SYNTHETIC
+      import { execSync, spawn } from "node:child_process";
+      const name = "safe";
+      export function run(flag: boolean): void {
+        execSync("echo " + "safe");
+        spawn("ls", [process.env.TOKEN ?? ""], { shell: false });
+        execSync(flag ? "ls" : "pwd");
+        execSync(name ?? "ls");
+        spawn("ls", ["-l"], { shell: true });
+        execSync(() => process.env.TOKEN);
+      }
+      function log(label: string): void {
+        execSync("ls");
+        console.log(label);
+      }
+      log(process.env.TOKEN ?? "");
+    `;
+
+    const findings = await checkWithEslint("scripts/env-shell-safe-shapes.ts", code);
+
+    expect(findings.filter((finding) => finding.rule === "slop/no-env-shell-command")).toEqual([]);
+  });
+
+  it("does not follow multi-hop environment data flow", async () => {
     const code = `
       import { spawnSync } from "node:child_process";
 

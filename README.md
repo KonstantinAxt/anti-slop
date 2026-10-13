@@ -226,7 +226,7 @@ The eslint check identifies logic errors, complexity, and common shortcuts:
 - slop/no-trivial-functions: You must not create wrapper functions that only forward arguments without logic.
 - slop/no-trivial-type-aliases: You must not create type aliases that rename a single primitive without union or constraint.
 - slop/no-jargon: Comments must not use filler words like straightforward or detailed.
-- slop/no-env-shell-command: You must not construct child process execution commands from environment variables without allowlisting or validation.
+- slop/no-env-shell-command: You must not construct child process execution commands from environment variables without allowlisting or validation. The rule follows env values returned by same-file helper functions, and env arguments passed to a same-file helper that builds the command from that parameter directly; helpers imported from other files are not followed.
 - slop/no-redundant-presence-check: You must not check Map#has before Map#get with redundant lookups or unreachable guards; look up the key once and narrow the result.
 - slop/no-unknown-returns: You must not specify return annotations of unknown, Promise<unknown>, or PromiseLike<unknown> (opt-in; same-file AST only).
 - slop/no-unknown-parameters: You must not annotate parameters as unknown or a union containing it, except a cause parameter or the exact subject of a type predicate (opt-in; same-file AST only).
