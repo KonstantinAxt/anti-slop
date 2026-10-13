@@ -27,7 +27,7 @@ describe("CLI Process Integration", () => {
     expect(stdout).toContain("--staged");
     expect(stdout).toContain("--crap");
     expect(stdout).toContain("--crap-threshold");
-  }, 30000);
+  });
 
   it("outputs structured JSON when --json is passed", () => {
     const stdout = execSync(
@@ -38,7 +38,7 @@ describe("CLI Process Integration", () => {
 
     expect(parsed).toHaveProperty("findings");
     expect(parsed).toHaveProperty("totalFilesChecked");
-  }, 30000);
+  });
 
   it("outputs Markdown findings when --llm is passed", () => {
     const stdout = execSync(
@@ -47,13 +47,13 @@ describe("CLI Process Integration", () => {
     );
 
     expect(stdout).toContain("# Anti-AI Slop Review Findings");
-  }, 30000);
+  });
 
   it("accepts --allow-loose-tsconfig flag", () => {
     const stdout = execSync(`"${CLI_PATH}" --help`, { encoding: "utf-8" });
 
     expect(stdout).toContain("--allow-loose-tsconfig");
-  }, 30000);
+  });
 
   it("accepts --crap and --crap-threshold flags", () => {
     const stdout = execSync(
@@ -63,7 +63,7 @@ describe("CLI Process Integration", () => {
     const parsed = JSON.parse(stdout);
 
     expect(parsed).toHaveProperty("crapEntries");
-  }, 30000);
+  });
 
   it("drains large multi-megabyte JSON output completely without truncation through subprocess pipe", async () => {
     const tmpDir = path.resolve(import.meta.dir, "../.tmp-test");
@@ -90,7 +90,7 @@ describe("CLI Process Integration", () => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }
     }
-  }, 60000);
+  });
 
   it("routes terminal formatted failures to stderr with exit 1", async () => {
     const { stdout, stderr, exitCode } = await runSubprocess(
@@ -102,5 +102,5 @@ describe("CLI Process Integration", () => {
     expect(stdout).toBe("");
     expect(stderr).toContain("anti-slop");
     expect(stderr).toContain("semantic-violations.ts");
-  }, 30000);
+  });
 });

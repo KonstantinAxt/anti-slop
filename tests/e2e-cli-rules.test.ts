@@ -92,26 +92,26 @@ describe("E2E CLI Rules Suite across All Checks", () => {
       const sandbox = path.join(WORKSPACE_ROOT, "e2e-fixtures/strict-ts/strict-mode-fail");
 
       assertCliRuleHits(["--json"], ["strict-mode"], { cwd: sandbox, expectedPassed: false });
-    }, 30000);
+    });
 
     it("detects no-unchecked-indexed-access in tsconfig.json via CLI sandbox", () => {
       const sandbox = path.join(WORKSPACE_ROOT, "e2e-fixtures/strict-ts/unchecked-indexed-fail");
 
       assertCliRuleHits(["--json"], ["no-unchecked-indexed-access"], { cwd: sandbox, expectedPassed: false });
-    }, 30000);
+    });
 
     it("detects exact-optional-property-types warning in tsconfig.json via CLI sandbox", () => {
       const sandbox = path.join(WORKSPACE_ROOT, "e2e-fixtures/strict-ts/exact-optional-fail");
 
       assertCliRuleHits(["--json"], ["exact-optional-property-types"], { cwd: sandbox, expectedStatus: 0, expectedPassed: true });
-    }, 30000);
+    });
 
     it("detects non-null assertion and explicit any syntax in syntax-violations.ts", () => {
       assertCliRuleHits(["--json", "e2e-fixtures/strict-ts/syntax-violations.ts"], [
         "no-non-null-assertion",
         "no-explicit-any",
       ]);
-    }, 30000);
+    });
 
     it("detects all semantic strict-ts program checker rules in semantic-violations.ts", () => {
       assertCliRuleHits(["--json", "e2e-fixtures/strict-ts/semantic-violations.ts"], [
@@ -123,7 +123,7 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         "exact-optional-property-types",
         "no-unchecked-indexed-access",
       ]);
-    }, 30000);
+    });
   });
 
   describe("Architectural Boundaries Rules", () => {
@@ -133,7 +133,7 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         "mock-leak",
         "isolated-utils",
       ]);
-    }, 30000);
+    });
   });
 
   describe("Fractal Architecture Framework Rules", () => {
@@ -144,7 +144,7 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         "no-upward-dependency",
         "no-private-leak",
       ]);
-    }, 30000);
+    });
   });
 
   describe("Codebase Scars Rules", () => {
@@ -156,7 +156,7 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         "no-trivial-object-wrapper",
         "no-async-array-callback",
       ]);
-    }, 30000);
+    });
   });
 
   describe("Hollow Tests Rules", () => {
@@ -171,7 +171,7 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         "no-static-sleep",
         "no-logic-in-test",
       ]);
-    }, 30000);
+    });
 
     it("detects focused test in Cypress fixture TodoList.cy.ts via CLI", () => {
       assertCliRuleHits(
@@ -179,7 +179,7 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         ["no-focused-test"],
         { expectedStatus: 1, expectedPassed: false },
       );
-    }, 30000);
+    });
 
     it("detects missing assertion in Cypress fixture TodoListAssertionFree.cy.ts via CLI", () => {
       assertCliRuleHits(
@@ -187,21 +187,21 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         ["missing-assertion"],
         { expectedStatus: 1, expectedPassed: false },
       );
-    }, 30000);
+    });
 
     it("passes cleanly on Cypress fixture TodoListClean.cy.ts via CLI without false positives", () => {
       assertCliClean("e2e-fixtures/hollow-tests/cypress/workflows/TodoListClean.cy.ts");
-    }, 30000);
+    });
 
     it("passes cleanly on Cypress fixture TodoListLookalike.cy.ts via CLI without false positives", () => {
       assertCliClean("e2e-fixtures/hollow-tests/cypress/workflows/TodoListLookalike.cy.ts");
-    }, 30000);
+    });
   });
 
   describe("Stale Mocks Rules", () => {
     it("detects stale-mock-export in stale.test.ts", () => {
       assertCliRuleHits(["--json", "e2e-fixtures/stale-mocks/"], ["stale-mock-export"]);
-    }, 30000);
+    });
   });
 
   describe("Dead Code Rules", () => {
@@ -211,13 +211,13 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         ["unused-export", "unused-file"],
         { expectedStatus: 0, expectedPassed: true },
       );
-    }, 30000);
+    });
   });
 
   describe("Code Duplication Rules", () => {
     it("detects duplicate-code across duplicate files via jscpd", () => {
       assertCliRuleHits(["--json", "e2e-fixtures/duplication/"], ["duplicate-code"]);
-    }, 20000);
+    });
   });
 
   describe("ESLint Bundled Rules", () => {
@@ -229,7 +229,7 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         "sonarjs/no-identical-expressions",
         "sonarjs/no-duplicate-string",
       ]);
-    }, 30000);
+    });
 
     it("detects slop, naming, and type assertion rules in slop.ts", () => {
       assertCliRuleHits(["--json", "e2e-fixtures/eslint/slop.ts"], [
@@ -243,7 +243,7 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         "@typescript-eslint/no-magic-numbers",
         "slop/no-chained-type-assertions",
       ]);
-    }, 30000);
+    });
 
     it("detects all Unicorn and De Morgan rules in unicorn-demorgan.ts", () => {
       assertCliRuleHits(["--json", "e2e-fixtures/eslint/unicorn-demorgan.ts"], [
@@ -258,7 +258,7 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         "de-morgan/no-negated-disjunction",
         "unicorn/no-useless-promise-resolve-reject",
       ]);
-    }, 30000);
+    });
 
     it("detects barrel-files rules in barrel-export-all.ts and barrel-module", () => {
       assertCliRuleHits(["--json", "e2e-fixtures/eslint/barrel-export-all.ts"], [
@@ -270,7 +270,7 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         ["barrel-files/avoid-barrel-files"],
         { expectedStatus: 0, expectedPassed: true },
       );
-    }, 30000);
+    });
 
     it("detects React, hooks, perf, effect, and compiler rules in react-components.tsx", () => {
       assertCliRuleHits(["--json", "e2e-fixtures/eslint/react-components.tsx"], [
@@ -301,14 +301,14 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         "react-you-might-not-need-an-effect/no-chain-state-updates",
         "react-you-might-not-need-an-effect/no-adjust-state-on-prop-change",
       ]);
-    }, 20000);
+    });
 
     it("detects accessibility rules in accessibility.tsx", () => {
       assertCliRuleHits(["--json", "e2e-fixtures/eslint/accessibility.tsx"], [
         "jsx-a11y/alt-text",
         "jsx-a11y/aria-role",
       ]);
-    }, 30000);
+    });
 
     it("detects vitest and test-smells rules in vitest-test-smells.test.ts", () => {
       assertCliRuleHits(["--json", "e2e-fixtures/eslint/vitest-test-smells.test.ts"], [
@@ -323,7 +323,7 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         "test-smells/redundant-print",
         "test-smells/sleepy-test",
       ]);
-    }, 30000);
+    });
 
     it("detects testing-library rules in testing-library.test.tsx", () => {
       assertCliRuleHits(["--json", "e2e-fixtures/eslint/testing-library.test.tsx"], [
@@ -336,7 +336,7 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         "testing-library/no-await-sync-queries",
         "testing-library/no-unnecessary-act",
       ]);
-    }, 30000);
+    });
 
     it("detects playwright rules in playwright/flow.test.ts", () => {
       assertCliRuleHits(["--json", "e2e-fixtures/eslint/playwright/flow.test.ts"], [
@@ -346,7 +346,7 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         "playwright/no-eval",
         "playwright/prefer-web-first-assertions",
       ]);
-    }, 30000);
+    });
 
     it("detects JSDoc rules in jsdoc.ts", () => {
       assertCliRuleHits(
@@ -361,23 +361,23 @@ describe("E2E CLI Rules Suite across All Checks", () => {
         ],
         { expectedStatus: 0, expectedPassed: true },
       );
-    }, 30000);
+    });
 
     it("detects redundant presence checks in presence-check-invalid.ts", () => {
       assertCliRuleHits(["--json", "e2e-fixtures/eslint/presence-check-invalid.ts"], [
         "slop/no-redundant-presence-check",
       ]);
-    }, 30000);
+    });
   });
 
   describe("Clean Fixtures and CLI Flags Verification", () => {
     it("passes with exit code 0 and zero findings on clean test", () => {
       assertCliClean("e2e-fixtures/clean/clean.test.ts");
-    }, 30000);
+    });
 
     it("passes with exit code 0 and zero findings on clean presence check fixture", () => {
       assertCliClean("e2e-fixtures/clean/clean-presence-check.test.ts");
-    }, 30000);
+    });
 
     it("formats markdown output when --llm is supplied", () => {
       const result = runCli(["--llm", "e2e-fixtures/strict-ts/syntax-violations.ts"]);
@@ -385,7 +385,7 @@ describe("E2E CLI Rules Suite across All Checks", () => {
       expect(result.status).toBe(1);
       expect(result.stdout).toContain("# Anti-AI Slop Review Findings");
       expect(result.stdout).toContain("no-non-null-assertion");
-    }, 30000);
+    });
 
     it("supports --allow-loose-tsconfig to bypass tsconfig strictness errors", () => {
       const sandbox = path.join(WORKSPACE_ROOT, "e2e-fixtures/strict-ts/strict-mode-fail");
@@ -397,7 +397,7 @@ describe("E2E CLI Rules Suite across All Checks", () => {
       const rules = result.json?.findings.map((finding) => finding.rule) || [];
 
       expect(rules).not.toContain("strict-mode");
-    }, 30000);
+    });
   });
 
   describe("Default Discovery Scope", () => {
@@ -405,6 +405,6 @@ describe("E2E CLI Rules Suite across All Checks", () => {
       const result = runCli(["--json"]);
 
       expect(result.json?.totalFilesChecked).toBeGreaterThanOrEqual(45);
-    }, 20000);
+    });
   });
 });
