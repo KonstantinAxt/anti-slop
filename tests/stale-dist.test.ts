@@ -113,6 +113,22 @@ describe("Stale dist detection in bin/anti-slop", () => {
     expect(trimmed).toBe("OUTPUT_FROM_DIST");
   });
 
+  it("executes source when a bin module is newer than dist", () => {
+    const { binTarget, distTarget, tsTarget, srcTarget } = setupSandboxEnvironment(true);
+    const binModulePath = path.join(SANDBOX_DIR, "bin/cli.ts");
+    fs.writeFileSync(binModulePath, "export {};\n");
+    const oldTimestamp = new Date("2020-01-01");
+    const freshTimestamp = new Date("2021-01-01");
+    fs.utimesSync(tsTarget, oldTimestamp, oldTimestamp);
+    fs.utimesSync(srcTarget, oldTimestamp, oldTimestamp);
+    fs.utimesSync(distTarget, oldTimestamp, oldTimestamp);
+    fs.utimesSync(binModulePath, freshTimestamp, freshTimestamp);
+
+    const stdout = execSync(`node "${binTarget}"`, { encoding: "utf-8" });
+
+    expect(stdout.trim()).toBe("OUTPUT_FROM_SOURCE");
+  });
+
   it("executes source when ANTI_SLOP_FORCE_SOURCE is set even if dist is fresh", () => {
     const { binTarget } = setupSandboxEnvironment(true);
 

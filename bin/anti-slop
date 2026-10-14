@@ -17,8 +17,13 @@ function isDistStale(distPath, cliTsPath, srcDirPath) {
 
     const distMtime = fs.statSync(distPath).mtimeMs;
 
-    if (fs.statSync(cliTsPath).mtimeMs > distMtime) {
-      return true;
+    const binDirPath = path.dirname(cliTsPath);
+    const binEntries = fs.readdirSync(binDirPath, { withFileTypes: true });
+    for (const entry of binEntries) {
+      if (entry.isFile() && entry.name.endsWith(".ts")) {
+        const modulePath = path.join(binDirPath, entry.name);
+        if (fs.statSync(modulePath).mtimeMs > distMtime) return true;
+      }
     }
 
     if (fs.existsSync(srcDirPath)) {
