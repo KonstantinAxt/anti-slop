@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import { runLlmReview, withLlmReview } from "../src/judge/gate.js";
 import { createOpenAICompatibleProvider } from "../src/judge/provider.js";
-import type { JudgeProvider } from "../src/judge/types.js";
+import type { JudgeProvider, ReviewSource } from "../src/judge/types.js";
 import type { AntiSlopOptions, AntiSlopResult } from "../src/types.js";
 
 const HELP_TEXT = `
@@ -73,8 +73,8 @@ async function resolveLlmReviewProvider(options: AntiSlopOptions): Promise<{ pro
 // Merges the advisory review into the scan result and returns the summary line printed after non-JSON output.
 async function addLlmReview(scan: AntiSlopResult, options: AntiSlopOptions, targetFiles: string[], provider: JudgeProvider): Promise<{ result: AntiSlopResult; summary: string }> {
   const cwd = options.cwd ?? process.cwd();
-  const gitRange = options.staged ? ["--cached"] : [`${options.since ?? ""}...HEAD`];
-  const review = await runLlmReview(cwd, gitRange, targetFiles, provider);
+  const source: ReviewSource = options.staged ? { kind: "staged" } : { kind: "since", ref: options.since ?? "" };
+  const review = await runLlmReview(cwd, source, targetFiles, provider);
 
   return { result: withLlmReview(scan, review), summary: `\nLLM review (advisory): ${review.check.reason ?? ""}\n` };
 }
