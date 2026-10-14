@@ -81,42 +81,30 @@ function mergeFlatConfigItem(target: RepoConfig, item: unknown): void {
   });
 }
 
-function loadJsonConfig(filePath: string): unknown {
-  try {
-    const raw = fs.readFileSync(filePath, "utf-8");
-
-    return JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
+function loadJsonConfig(filePath: string): Promise<unknown> {
+  return fs.promises
+    .readFile(filePath, "utf-8")
+    .then((raw): unknown => JSON.parse(raw))
+    .catch(() => undefined);
 }
 
 async function loadJsConfig(filePath: string): Promise<unknown> {
-  try {
-    // Dynamic import of runtime workspace configuration outside anti-slop build graph
-    const mod: unknown = await import(filePath);
-    if (isObject(mod) && "default" in mod) {
-      return mod.default;
-    }
+  // Dynamic import of runtime workspace configuration outside anti-slop build graph
+  const mod = await import(filePath).then((loaded: Record<string, unknown>) => loaded, () => undefined);
+  if (!mod) return undefined;
 
-    return mod;
-  } catch {
-    return undefined;
-  }
+  return "default" in mod ? mod.default : mod;
 }
 
-function loadAntiSlopJson(cwd: string, result: RepoConfig): boolean {
+async function loadAntiSlopJson(cwd: string, result: RepoConfig): Promise<void> {
   for (const configFile of ["anti-slop.json", ".anti-slop.json"]) {
     const full = path.join(cwd, configFile);
     if (fs.existsSync(full)) {
-      const data = loadJsonConfig(full);
-      mergeRulesAndOverrides(result, data);
+      mergeRulesAndOverrides(result, await loadJsonConfig(full));
 
-      return true;
+      return;
     }
   }
-
-  return false;
 }
 
 async function loadFlatConfigs(cwd: string, result: RepoConfig): Promise<boolean> {
@@ -145,7 +133,7 @@ async function loadFlatConfigs(cwd: string, result: RepoConfig): Promise<boolean
   return false;
 }
 
-async function loadLegacyConfigs(cwd: string, result: RepoConfig): Promise<boolean> {
+async function loadLegacyConfigs(cwd: string, result: RepoConfig): Promise<void> {
   const legacyFiles = [
     ".eslintrc.json",
     ".eslintrc",
@@ -159,21 +147,15 @@ async function loadLegacyConfigs(cwd: string, result: RepoConfig): Promise<boole
     const full = path.join(cwd, configFile);
     if (fs.existsSync(full)) {
       const isJs = configFile.endsWith(".js") || configFile.endsWith(".cjs");
-      const data = isJs ? await loadJsConfig(full) : loadJsonConfig(full);
-      mergeRulesAndOverrides(result, data);
+      mergeRulesAndOverrides(result, isJs ? await loadJsConfig(full) : await loadJsonConfig(full));
 
-      return true;
+      return;
     }
   }
-
-  return false;
 }
 
-function loadPackageJson(cwd: string, result: RepoConfig): void {
-  const pkgPath = path.join(cwd, "package.json");
-  if (!fs.existsSync(pkgPath)) return;
-
-  const pkg = loadJsonConfig(pkgPath);
+async function loadPackageJson(cwd: string, result: RepoConfig): Promise<void> {
+  const pkg = await loadJsonConfig(path.join(cwd, "package.json"));
   if (!isObject(pkg)) return;
 
   mergeRulesAndOverrides(result, pkg["anti-slop"] || pkg.antiSlop);
@@ -196,16 +178,13 @@ export async function loadRepoConfig(
     fileOverrides: [],
   };
 
-  loadAntiSlopJson(cwd, result);
+  await loadAntiSlopJson(cwd, result);
   const foundFlat = await loadFlatConfigs(cwd, result);
   if (!foundFlat) {
     await loadLegacyConfigs(cwd, result);
   }
-  loadPackageJson(cwd, result);
-
-  if (explicitRules && typeof explicitRules === "object") {
-    Object.assign(result.globalRules, explicitRules);
-  }
+  await loadPackageJson(cwd, result);
+  Object.assign(result.globalRules, explicitRules);
 
   return result;
 }

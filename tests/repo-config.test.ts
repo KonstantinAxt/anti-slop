@@ -131,5 +131,18 @@ describe("loadRepoConfig", () => {
 
   it("ignores a package.json that is not an object", async () => {
     expect(await loadFrom({ "package.json": "1" })).toEqual({ globalRules: {}, fileOverrides: [] });
+    expect(await loadFrom({ "package.json": "null" })).toEqual({ globalRules: {}, fileOverrides: [] });
+  });
+
+  it("ignores a rules value that is not an object", async () => {
+    expect((await loadFrom({ "anti-slop.json": { rules: "ab" } })).globalRules).toEqual({});
+  });
+
+  it.each([".eslintrc.yaml", ".eslintrc.yml"])("reads JSON content from legacy config %s", async (name) => {
+    expect((await loadFrom({ [name]: { rules: { r: "off" } } })).globalRules).toEqual({ r: "off" });
+  });
+
+  it("reads named exports from a flat config without a default export", async () => {
+    expect((await loadFrom({ "eslint.config.mjs": `export const rules = { named: "off" };` })).globalRules).toEqual({ named: "off" });
   });
 });
