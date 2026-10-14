@@ -19,3 +19,7 @@ It holds deliberately broken code: type errors, assertion-free tests, focused te
 ## Issues and ideas
 
 Ideas and RFCs go to GitHub Discussions. Issues are for concrete bugs, accepted specs and rule proposals. Templates, labels and triage: `documentation/github-governance-and-intake.md`.
+
+## Benchmark results stay private
+
+This repo is public, and so is everything it ships: issues, PRs, commit messages, `CHANGELOG.md`, docs, tests, and fixtures. Results from the private `anti-slop-benchmarks` repo stay there. That covers scores, reports, per-PR findings, and task-ID lists. In public text, name the gap a change targets, such as "`--llm-review` misses unhandled promise rejections", and link the private run for the numbers. Write test fixtures from scratch rather than copying code from benchmark PRs. Gateway URLs and keys stay in environment variables.
