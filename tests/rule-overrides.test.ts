@@ -3,12 +3,11 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { runAntiSlop } from "../src/index.js";
+import { loadRepoConfig, type RepoConfig } from "../src/repo-config.js";
 import {
   applyRepoRuleGuard,
   getRepoOverrideForRule,
   getRepoRulesForFile,
-  loadRepoConfig,
-  type RepoConfig,
 } from "../src/rule-overrides.js";
 import type { Finding } from "../src/types.js";
 
