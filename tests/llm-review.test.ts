@@ -12,6 +12,7 @@ const TEST_MODEL = "test-judge-model";
 const CHANGED_FILE = "src/u.ts";
 const SECOND_CHANGED_FILE = "src/v.ts";
 const FLAGGED_LINE = 3;
+const FLAGGED_END_LINE = 4;
 const BASE_SCAN_TIMEOUT_MS = 30000;
 const CLI_PATH = path.resolve(import.meta.dirname, "../bin/anti-slop");
 
@@ -21,7 +22,7 @@ const AFTER = "interface User { name: string; }\nfunction get(u: User): string {
 
 const FLAG_RESPONSE = JSON.stringify({
   verdict: "FLAG",
-  findings: [{ file: CHANGED_FILE, line_range: { start: FLAGGED_LINE, end: FLAGGED_LINE }, problem_category: "unnecessary_under_invariant", reason: "Redundant null check: User is non-null.", confidence: 0.9 }],
+  findings: [{ file: CHANGED_FILE, line_range: { start: FLAGGED_LINE, end: FLAGGED_END_LINE }, problem_category: "unnecessary_under_invariant", reason: "Redundant null check: User is non-null.", confidence: 0.9 }],
 });
 
 let repoDir = "";
@@ -75,7 +76,7 @@ describe("LLM review", () => {
     const review = await runLlmReview(repoDir, SINCE_SOURCE, targets, createStaticProvider([FLAG_RESPONSE], TEST_MODEL));
 
     expect(review.findings).toEqual([
-      { check: LLM_REVIEW_CHECK, rule: "unnecessary-under-invariant", severity: "warning", message: "Redundant null check: User is non-null.", file: CHANGED_FILE, line: FLAGGED_LINE, column: 1, suggestion: undefined },
+      { check: LLM_REVIEW_CHECK, rule: "unnecessary-under-invariant", severity: "warning", message: "Redundant null check: User is non-null.", file: CHANGED_FILE, line: FLAGGED_LINE, column: 1, confidence: 0.9, endLine: FLAGGED_END_LINE, suggestion: undefined },
     ]);
     expect(review.check).toEqual({ check: LLM_REVIEW_CHECK, status: "completed", findingsCount: 1, reason: `Reviewed 1 files with ${TEST_MODEL}: 1 findings, 0 abstained` });
   });

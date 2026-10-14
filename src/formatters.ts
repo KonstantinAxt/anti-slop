@@ -84,7 +84,13 @@ function formatLlmPrompt(result: AntiSlopResult): string {
   result.findings.forEach((finding, idx) => {
     const icon = finding.severity === "error" ? "[ERROR]" : "[WARN]";
     lines.push(`### ${idx + 1}. ${icon} \`${finding.rule}\` (${finding.check})`);
-    lines.push(`- **Location:** \`${finding.file}:${finding.line}:${finding.column}\``);
+    const location = finding.endLine !== undefined && finding.endLine !== finding.line
+      ? `${finding.file}:${finding.line}-${finding.endLine}:${finding.column}`
+      : `${finding.file}:${finding.line}:${finding.column}`;
+    lines.push(`- **Location:** \`${location}\``);
+    if (finding.confidence !== undefined) {
+      lines.push(`- **Confidence:** ${finding.confidence}`);
+    }
     lines.push(`- **Problem:** ${finding.message}`);
 
     if (finding.excerpt) {

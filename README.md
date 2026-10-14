@@ -450,6 +450,7 @@ anti-slop --since origin/main --llm-review
 
 - **What it reviews:** each changed `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs` or `.cjs` file with a non-empty diff gets one request after the normal scan. The judge reads content from the diff's new side: `HEAD` for `--since` or the index for `--staged`.
 - **Advisory only:** findings are warnings with check `llm-review` and rule `unnecessary-under-invariant`. They never change the exit code.
+- **Finding metadata:** `--json` includes `confidence` (0 to 1) and `endLine` for judge findings. In `--llm` output confidence is shown, and a line range is shown when it spans multiple lines.
 - **Abstentions are visible:** the terminal and `--llm` output end with one summary line, for example `LLM review (advisory): Reviewed 4 files with claude-haiku-4-5-20251001: 1 findings, 1 abstained (TIMEOUT 1)`. `--json` has the same text in `checks["llm-review"].reason`. A timeout, provider error or malformed answer never reads as a clean review, and never hides deterministic findings.
 - **Refusals:** without `--since <ref>` or `--staged`, or without the base URL and API key, anti-slop exits with code 2 before scanning.
 - **Budget:** one request per changed file, with at most 2000 output tokens, a 25000 ms timeout, and no request for inputs above about 12000 tokens (`TOKEN_CEILING`). With the default model, a file cost about $0.004 in the evaluation.
