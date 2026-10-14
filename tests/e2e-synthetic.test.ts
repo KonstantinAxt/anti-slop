@@ -1,15 +1,14 @@
-import { describe, expect, it } from "bun:test";
-import { execSync } from "node:child_process";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-
-const CLI_PATH = path.resolve(import.meta.dir, "../bin/anti-slop");
+import { runCliProcess } from "./cli-process.js";
 
 describe("E2E Synthetic AI Slop Repo Verification", () => {
-  it("detects all Evil Martians categories on a synthetic repository and outputs LLM prompt", () => {
-    const sandboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "anti-slop-e2e-sandbox-"));
-    try {
+  let sandboxDir = "";
+
+  beforeAll(() => {
+    sandboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "anti-slop-e2e-sandbox-"));
     fs.mkdirSync(path.join(sandboxDir, "src/services"), { recursive: true });
     fs.mkdirSync(path.join(sandboxDir, "src/components"), { recursive: true });
 
@@ -69,66 +68,47 @@ describe("E2E Synthetic AI Slop Repo Verification", () => {
       });
       `
     );
+  });
 
-    // Run CLI with --json
-    let jsonOutput = "";
-    try {
-      jsonOutput = execSync(`node ${CLI_PATH} --json`, {
-        cwd: sandboxDir,
-        encoding: "utf-8",
-      });
-    } catch (err: unknown) {
-      // CLI exits with 1 on errors, stdout has JSON
-      const execErr = err as { stdout: string };
-      jsonOutput = execErr.stdout;
-    }
+  afterAll(() => {
+    fs.rmSync(sandboxDir, { recursive: true, force: true });
+  });
 
-    const report = JSON.parse(jsonOutput);
+  it("detects all Evil Martians categories on a synthetic repository", async ({ signal }) => {
+    const { stdout } = await runCliProcess(["--json"], sandboxDir, signal);
+    const report = JSON.parse(stdout);
 
-    // Run CLI with --llm
-    let llmOutput = "";
-    try {
-      llmOutput = execSync(`node ${CLI_PATH} --llm`, {
-        cwd: sandboxDir,
-        encoding: "utf-8",
-      });
-    } catch (err: unknown) {
-      const execErr = err as { stdout: string };
-      llmOutput = execErr.stdout;
-    }
+    expect(report.passed).toBe(false);
 
-      // Assertions
-      expect(report.passed).toBe(false);
+    const ruleIds = report.findings.map((f: { rule: string }) => f.rule);
 
-      const ruleIds = report.findings.map((f: { rule: string }) => f.rule);
+    // Move #2 Strict TS
+    expect(ruleIds).toContain("strict-mode");
+    expect(ruleIds).toContain("no-unchecked-indexed-access");
+    expect(ruleIds).toContain("no-non-null-assertion");
 
-      // Move #2 Strict TS
-      expect(ruleIds).toContain("strict-mode");
-      expect(ruleIds).toContain("no-unchecked-indexed-access");
-      expect(ruleIds).toContain("no-non-null-assertion");
+    // Move #3 Behavioral
+    expect(ruleIds).toContain("no-explicit-any");
 
-      // Move #3 Behavioral
-      expect(ruleIds).toContain("no-explicit-any");
+    // Move #4 Boundaries
+    expect(ruleIds).toContain("ui-free-service");
 
-      // Move #4 Boundaries
-      expect(ruleIds).toContain("ui-free-service");
+    // Move #5 Scars
+    expect(ruleIds).toContain("no-service-rounding");
 
-      // Move #5 Scars
-      expect(ruleIds).toContain("no-service-rounding");
+    // Move #7 Hollow Assertions
+    expect(ruleIds).toContain("hollow-call-assertion");
 
-      // Move #7 Hollow Assertions
-      expect(ruleIds).toContain("hollow-call-assertion");
+    // Move #8 Stale Mock Resolver
+    expect(ruleIds).toContain("stale-mock-export");
+  });
 
-      // Move #8 Stale Mock Resolver
-      expect(ruleIds).toContain("stale-mock-export");
+  it("outputs the LLM prompt for a synthetic repository", async ({ signal }) => {
+    const { stdout: llmOutput } = await runCliProcess(["--llm"], sandboxDir, signal);
 
-      // Check Markdown output formatting
-      expect(llmOutput).toContain("# Anti-AI Slop Review Findings");
-      expect(llmOutput).not.toContain("LLM Code Review Guidance");
-      expect(llmOutput).toContain("legacyDeletedInvoice");
-      expect(llmOutput).toContain("no-service-rounding");
-    } finally {
-      fs.rmSync(sandboxDir, { recursive: true, force: true });
-    }
+    expect(llmOutput).toContain("# Anti-AI Slop Review Findings");
+    expect(llmOutput).not.toContain("LLM Code Review Guidance");
+    expect(llmOutput).toContain("legacyDeletedInvoice");
+    expect(llmOutput).toContain("no-service-rounding");
   });
 });
