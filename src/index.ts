@@ -16,12 +16,8 @@ import { checkStrictTsCode, checkTsConfig, checkStrictTsProgram } from "./checks
 import { checkPrSize } from "./checks/pr-size.js";
 import { getDiffFilesSince, getStagedFiles, getTrackedCodeFiles } from "./git.js";
 import type { AntiSlopOptions, AntiSlopResult, CheckExecution, CrapEntry, Finding, MutationScoreMetrics } from "./types.js";
-import {
-  loadRepoConfig,
-  getRepoRulesForFile,
-  applyRepoRuleGuard,
-  type RepoConfig,
-} from "./rule-overrides.js";
+import { loadRepoConfig, type RepoConfig } from "./repo-config.js";
+import { getRepoRulesForFile, applyRepoRuleGuard } from "./rule-overrides.js";
 
 export { formatOutput } from "./formatters.js";
 export type { AntiSlopOptions, AntiSlopResult, CheckExecution, CheckStatus, CrapEntry, Finding, MutationScoreMetrics, Severity } from "./types.js";
