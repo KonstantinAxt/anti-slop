@@ -1,27 +1,15 @@
-import { describe, expect, it } from "bun:test";
-import { execSync, spawn } from "node:child_process";
+import { describe, expect, it } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { runCliProcess } from "./cli-process.js";
 
-const CLI_PATH = path.resolve(import.meta.dir, "../bin/anti-slop");
-
-function runSubprocess(args: string[], cwd: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return new Promise((resolve) => {
-    const proc = spawn(CLI_PATH, args, { cwd });
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.on("data", (d) => { stdout += d.toString(); });
-    proc.stderr.on("data", (d) => { stderr += d.toString(); });
-    proc.on("close", (code) => {
-      resolve({ stdout, stderr, exitCode: code ?? 0 });
-    });
-  });
-}
+const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
 describe("CLI Process Integration", () => {
-  it("prints help and exits with 0 on --help", () => {
-    const stdout = execSync(`"${CLI_PATH}" --help`, { encoding: "utf-8" });
+  it("prints help and exits with 0 on --help", async ({ signal }) => {
+    const { stdout, status } = await runCliProcess(["--help"], REPO_ROOT, signal);
 
+    expect(status).toBe(0);
     expect(stdout).toContain("USAGE:");
     expect(stdout).toContain("anti-slop");
     expect(stdout).toContain("--staged");
@@ -29,43 +17,42 @@ describe("CLI Process Integration", () => {
     expect(stdout).toContain("--crap-threshold");
   });
 
-  it("outputs structured JSON when --json is passed", () => {
-    const stdout = execSync(
-      `"${CLI_PATH}" --json tests/tracer.test.ts`,
-      { encoding: "utf-8" }
-    );
+  it("outputs structured JSON when --json is passed", async ({ signal }) => {
+    const { stdout, status } = await runCliProcess(["--json", "tests/tracer.test.ts"], REPO_ROOT, signal);
     const parsed = JSON.parse(stdout);
 
+    expect(status).toBe(0);
     expect(parsed).toHaveProperty("findings");
     expect(parsed).toHaveProperty("totalFilesChecked");
   });
 
-  it("outputs Markdown findings when --llm is passed", () => {
-    const stdout = execSync(
-      `"${CLI_PATH}" --llm tests/tracer.test.ts`,
-      { encoding: "utf-8" }
-    );
+  it("outputs Markdown findings when --llm is passed", async ({ signal }) => {
+    const { stdout, status } = await runCliProcess(["--llm", "tests/tracer.test.ts"], REPO_ROOT, signal);
 
+    expect(status).toBe(0);
     expect(stdout).toContain("# Anti-AI Slop Review Findings");
   });
 
-  it("accepts --allow-loose-tsconfig flag", () => {
-    const stdout = execSync(`"${CLI_PATH}" --help`, { encoding: "utf-8" });
+  it("accepts --allow-loose-tsconfig flag", async ({ signal }) => {
+    const { stdout, status } = await runCliProcess(["--help"], REPO_ROOT, signal);
 
+    expect(status).toBe(0);
     expect(stdout).toContain("--allow-loose-tsconfig");
   });
 
-  it("accepts --crap and --crap-threshold flags", () => {
-    const stdout = execSync(
-      `"${CLI_PATH}" --json --crap --crap-threshold 25 tests/tracer.test.ts`,
-      { encoding: "utf-8" }
+  it("accepts --crap and --crap-threshold flags", async ({ signal }) => {
+    const { stdout, status } = await runCliProcess(
+      ["--json", "--crap", "--crap-threshold", "25", "tests/tracer.test.ts"],
+      REPO_ROOT,
+      signal
     );
     const parsed = JSON.parse(stdout);
 
+    expect(status).toBe(0);
     expect(parsed).toHaveProperty("crapEntries");
   });
 
-  it("drains large multi-megabyte JSON output completely without truncation through subprocess pipe", async () => {
+  it("drains large multi-megabyte JSON output completely without truncation through subprocess pipe", async ({ signal }) => {
     const tmpDir = path.resolve(import.meta.dir, "../.tmp-test");
     fs.mkdirSync(tmpDir, { recursive: true });
     const tmpFile = path.join(tmpDir, "large-findings.ts");
@@ -75,13 +62,14 @@ describe("CLI Process Integration", () => {
       Array.from({ length: 2500 }, (_, i) => `export const x${i} = (1 as ${targetType});`).join("\n")
     );
     try {
-      const { stdout, stderr, exitCode } = await runSubprocess(["--json", tmpFile], path.resolve(import.meta.dir, ".."));
+      const { stdout, stderr, status } = await runCliProcess(["--json", tmpFile], REPO_ROOT, signal);
 
-      expect(exitCode).toBe(1);
+      expect(status).toBe(1);
       expect(stderr).toBe("");
       expect(stdout.length).toBeGreaterThan(1000000);
 
       const parsed = JSON.parse(stdout);
+
       expect(parsed.passed).toBe(false);
       expect(parsed.totalFilesChecked).toBe(1);
       expect(parsed.findings.length).toBeGreaterThanOrEqual(2500);
@@ -92,13 +80,14 @@ describe("CLI Process Integration", () => {
     }
   });
 
-  it("routes terminal formatted failures to stderr with exit 1", async () => {
-    const { stdout, stderr, exitCode } = await runSubprocess(
+  it("routes terminal formatted failures to stderr with exit 1", async ({ signal }) => {
+    const { stdout, stderr, status } = await runCliProcess(
       ["--format", "terminal", "e2e-fixtures/strict-ts/semantic-violations.ts"],
-      path.resolve(import.meta.dir, "..")
+      REPO_ROOT,
+      signal
     );
 
-    expect(exitCode).toBe(1);
+    expect(status).toBe(1);
     expect(stdout).toBe("");
     expect(stderr).toContain("anti-slop");
     expect(stderr).toContain("semantic-violations.ts");

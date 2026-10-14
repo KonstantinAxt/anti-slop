@@ -77,8 +77,8 @@ This document describes the continuous integration, verification gates, and auto
    - Command: `pnpm run test:coverage`
    - Runs all 25 unit/integration test files (~25s) in parallel with E2E tests, generating LCOV coverage uploaded as an artifact for `crap-gate`.
 
-3. **E2E Subprocess Tests (`e2e-test`)**:
-   - Command: `pnpm run test:e2e` (pre-builds CLI via `pnpm run build` and runs Vitest E2E tests)
+3. **E2E Tests (`e2e-test`)**:
+   - Command: `pnpm run test:e2e` (pre-builds CLI via `pnpm run build` and runs Vitest E2E tests, including in-process rule checks and real-process CLI integration tests)
 
 4. **Anti-Slop Self Gate (`self-gate`)**:
    - Command: `node bin/anti-slop`

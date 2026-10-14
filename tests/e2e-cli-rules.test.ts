@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { execSync } from "node:child_process";
 import * as path from "node:path";
-const CLI_PATH = path.resolve(import.meta.dir, "../bin/anti-slop");
+import { runCli } from "../bin/cli.js";
+
 const WORKSPACE_ROOT = path.resolve(import.meta.dir, "..");
 
 interface CliResult {
@@ -21,46 +21,27 @@ interface CliResult {
   };
 }
 
-function runCli(args: string[], options: { cwd?: string } = {}): CliResult {
+async function runRuleCli(args: string[], options: { cwd?: string } = {}): Promise<CliResult> {
   const cwd = options.cwd || WORKSPACE_ROOT;
-
-  return runCliSubprocess(args, cwd);
-}
-
-function runCliSubprocess(args: string[], cwd: string): CliResult {
-  const cmd = `node "${CLI_PATH}" ${args.map((arg) => `"${arg}"`).join(" ")}`;
-  try {
-    const stdout = execSync(cmd, { cwd, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] });
-    let json: CliResult["json"];
-    if (args.includes("--json")) {
-      try { json = JSON.parse(stdout); } catch (parseErr: unknown) { void parseErr; }
+  const outcome = await runCli(args, cwd);
+  const result: CliResult = { stdout: outcome.stdout, stderr: outcome.stderr, status: outcome.exitCode };
+  if (args.includes("--json") && outcome.stdout) {
+    try {
+      result.json = JSON.parse(outcome.stdout);
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
     }
-    const result: CliResult = { stdout, stderr: "", status: 0 };
-    if (json !== undefined) result.json = json;
-
-    return result;
-  } catch (err: unknown) {
-    const execErr = err as { stdout?: string; stderr?: string; status?: number };
-    const stdout = execErr.stdout?.toString() || "";
-    const stderr = execErr.stderr?.toString() || "";
-    const status = execErr.status ?? 1;
-    let json: CliResult["json"];
-    if (args.includes("--json") && stdout) {
-      try { json = JSON.parse(stdout); } catch (parseErr: unknown) { void parseErr; }
-    }
-    const result: CliResult = { stdout, stderr, status };
-    if (json !== undefined) result.json = json;
-
-    return result;
   }
+
+  return result;
 }
 
-function assertCliRuleHits(
+async function assertCliRuleHits(
   args: string[],
   expectedRules: string[],
   options: { cwd?: string; expectedStatus?: number; expectedPassed?: boolean } = {},
-): CliResult {
-  const result = runCli(args, options);
+): Promise<CliResult> {
+  const result = await runRuleCli(args, options);
   const expectedStatus = options.expectedStatus ?? 1;
 
   expect(result.status).toBe(expectedStatus);
@@ -78,8 +59,8 @@ function assertCliRuleHits(
   return result;
 }
 
-function assertCliClean(fixturePath: string): void {
-  const result = runCli(["--json", fixturePath]);
+async function assertCliClean(fixturePath: string): Promise<void> {
+  const result = await runRuleCli(["--json", fixturePath]);
 
   expect(result.status).toBe(0);
   expect(result.json?.passed).toBe(true);
@@ -88,33 +69,33 @@ function assertCliClean(fixturePath: string): void {
 
 describe("E2E CLI Rules Suite across All Checks", () => {
   describe("Strict TypeScript Rules", () => {
-    it("detects strict-mode in tsconfig.json via CLI sandbox", () => {
+    it("detects strict-mode in tsconfig.json via CLI sandbox", async () => {
       const sandbox = path.join(WORKSPACE_ROOT, "e2e-fixtures/strict-ts/strict-mode-fail");
 
-      assertCliRuleHits(["--json"], ["strict-mode"], { cwd: sandbox, expectedPassed: false });
+      await assertCliRuleHits(["--json"], ["strict-mode"], { cwd: sandbox, expectedPassed: false });
     });
 
-    it("detects no-unchecked-indexed-access in tsconfig.json via CLI sandbox", () => {
+    it("detects no-unchecked-indexed-access in tsconfig.json via CLI sandbox", async () => {
       const sandbox = path.join(WORKSPACE_ROOT, "e2e-fixtures/strict-ts/unchecked-indexed-fail");
 
-      assertCliRuleHits(["--json"], ["no-unchecked-indexed-access"], { cwd: sandbox, expectedPassed: false });
+      await assertCliRuleHits(["--json"], ["no-unchecked-indexed-access"], { cwd: sandbox, expectedPassed: false });
     });
 
-    it("detects exact-optional-property-types warning in tsconfig.json via CLI sandbox", () => {
+    it("detects exact-optional-property-types warning in tsconfig.json via CLI sandbox", async () => {
       const sandbox = path.join(WORKSPACE_ROOT, "e2e-fixtures/strict-ts/exact-optional-fail");
 
-      assertCliRuleHits(["--json"], ["exact-optional-property-types"], { cwd: sandbox, expectedStatus: 0, expectedPassed: true });
+      await assertCliRuleHits(["--json"], ["exact-optional-property-types"], { cwd: sandbox, expectedStatus: 0, expectedPassed: true });
     });
 
-    it("detects non-null assertion and explicit any syntax in syntax-violations.ts", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/strict-ts/syntax-violations.ts"], [
+    it("detects non-null assertion and explicit any syntax in syntax-violations.ts", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/strict-ts/syntax-violations.ts"], [
         "no-non-null-assertion",
         "no-explicit-any",
       ]);
     });
 
-    it("detects all semantic strict-ts program checker rules in semantic-violations.ts", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/strict-ts/semantic-violations.ts"], [
+    it("detects all semantic strict-ts program checker rules in semantic-violations.ts", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/strict-ts/semantic-violations.ts"], [
         "no-implicit-any",
         "strict-null-checks",
         "strict-property-initialization",
@@ -127,8 +108,8 @@ describe("E2E CLI Rules Suite across All Checks", () => {
   });
 
   describe("Architectural Boundaries Rules", () => {
-    it("detects ui-free-service, mock-leak, and isolated-utils in boundaries directory", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/boundaries/"], [
+    it("detects ui-free-service, mock-leak, and isolated-utils in boundaries directory", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/boundaries/"], [
         "ui-free-service",
         "mock-leak",
         "isolated-utils",
@@ -137,8 +118,8 @@ describe("E2E CLI Rules Suite across All Checks", () => {
   });
 
   describe("Fractal Architecture Framework Rules", () => {
-    it("detects no-direct-fragment-import, peer-isolation, no-upward-dependency, and no-private-leak", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/fractal/"], [
+    it("detects no-direct-fragment-import, peer-isolation, no-upward-dependency, and no-private-leak", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/fractal/"], [
         "no-direct-fragment-import",
         "peer-isolation",
         "no-upward-dependency",
@@ -148,8 +129,8 @@ describe("E2E CLI Rules Suite across All Checks", () => {
   });
 
   describe("Codebase Scars Rules", () => {
-    it("detects no-service-rounding, no-empty-catch, no-unvalidated-api-cast, no-trivial-object-wrapper, and no-async-array-callback", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/scars/"], [
+    it("detects no-service-rounding, no-empty-catch, no-unvalidated-api-cast, no-trivial-object-wrapper, and no-async-array-callback", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/scars/"], [
         "no-service-rounding",
         "no-empty-catch",
         "no-unvalidated-api-cast",
@@ -160,8 +141,8 @@ describe("E2E CLI Rules Suite across All Checks", () => {
   });
 
   describe("Hollow Tests Rules", () => {
-    it("detects focused test, missing assertion, hollow assertions, calculation, sleep, and test logic", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/hollow-tests/src/suite.test.ts"], [
+    it("detects focused test, missing assertion, hollow assertions, calculation, sleep, and test logic", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/hollow-tests/src/suite.test.ts"], [
         "no-focused-test",
         "missing-assertion",
         "hollow-call-assertion",
@@ -173,40 +154,40 @@ describe("E2E CLI Rules Suite across All Checks", () => {
       ]);
     });
 
-    it("detects focused test in Cypress fixture TodoList.cy.ts via CLI", () => {
-      assertCliRuleHits(
+    it("detects focused test in Cypress fixture TodoList.cy.ts via CLI", async () => {
+      await assertCliRuleHits(
         ["--json", "e2e-fixtures/hollow-tests/cypress/workflows/TodoList.cy.ts"],
         ["no-focused-test"],
         { expectedStatus: 1, expectedPassed: false },
       );
     });
 
-    it("detects missing assertion in Cypress fixture TodoListAssertionFree.cy.ts via CLI", () => {
-      assertCliRuleHits(
+    it("detects missing assertion in Cypress fixture TodoListAssertionFree.cy.ts via CLI", async () => {
+      await assertCliRuleHits(
         ["--json", "e2e-fixtures/hollow-tests/cypress/workflows/TodoListAssertionFree.cy.ts"],
         ["missing-assertion"],
         { expectedStatus: 1, expectedPassed: false },
       );
     });
 
-    it("passes cleanly on Cypress fixture TodoListClean.cy.ts via CLI without false positives", () => {
-      assertCliClean("e2e-fixtures/hollow-tests/cypress/workflows/TodoListClean.cy.ts");
+    it("passes cleanly on Cypress fixture TodoListClean.cy.ts via CLI without false positives", async () => {
+      await assertCliClean("e2e-fixtures/hollow-tests/cypress/workflows/TodoListClean.cy.ts");
     });
 
-    it("passes cleanly on Cypress fixture TodoListLookalike.cy.ts via CLI without false positives", () => {
-      assertCliClean("e2e-fixtures/hollow-tests/cypress/workflows/TodoListLookalike.cy.ts");
+    it("passes cleanly on Cypress fixture TodoListLookalike.cy.ts via CLI without false positives", async () => {
+      await assertCliClean("e2e-fixtures/hollow-tests/cypress/workflows/TodoListLookalike.cy.ts");
     });
   });
 
   describe("Stale Mocks Rules", () => {
-    it("detects stale-mock-export in stale.test.ts", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/stale-mocks/"], ["stale-mock-export"]);
+    it("detects stale-mock-export in stale.test.ts", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/stale-mocks/"], ["stale-mock-export"]);
     });
   });
 
   describe("Dead Code Rules", () => {
-    it("detects unused-export and unused-file in dead-code directory", () => {
-      assertCliRuleHits(
+    it("detects unused-export and unused-file in dead-code directory", async () => {
+      await assertCliRuleHits(
         ["--json", "e2e-fixtures/dead-code/"],
         ["unused-export", "unused-file"],
         { expectedStatus: 0, expectedPassed: true },
@@ -215,14 +196,14 @@ describe("E2E CLI Rules Suite across All Checks", () => {
   });
 
   describe("Code Duplication Rules", () => {
-    it("detects duplicate-code across duplicate files via jscpd", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/duplication/"], ["duplicate-code"]);
+    it("detects duplicate-code across duplicate files via jscpd", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/duplication/"], ["duplicate-code"]);
     });
   });
 
   describe("ESLint Bundled Rules", () => {
-    it("detects all SonarJS rules in sonar.ts", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/eslint/sonar.ts"], [
+    it("detects all SonarJS rules in sonar.ts", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/eslint/sonar.ts"], [
         "sonarjs/cognitive-complexity",
         "sonarjs/no-identical-conditions",
         "sonarjs/no-duplicated-branches",
@@ -231,8 +212,8 @@ describe("E2E CLI Rules Suite across All Checks", () => {
       ]);
     });
 
-    it("detects slop, naming, and type assertion rules in slop.ts", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/eslint/slop.ts"], [
+    it("detects slop, naming, and type assertion rules in slop.ts", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/eslint/slop.ts"], [
         "no-warning-comments",
         "slop/no-jargon",
         "slop/no-trivial-type-aliases",
@@ -245,8 +226,8 @@ describe("E2E CLI Rules Suite across All Checks", () => {
       ]);
     });
 
-    it("detects all Unicorn and De Morgan rules in unicorn-demorgan.ts", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/eslint/unicorn-demorgan.ts"], [
+    it("detects all Unicorn and De Morgan rules in unicorn-demorgan.ts", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/eslint/unicorn-demorgan.ts"], [
         "unicorn/no-single-promise-in-promise-methods",
         "unicorn/no-await-in-promise-methods",
         "unicorn/no-useless-fallback-in-spread",
@@ -260,20 +241,20 @@ describe("E2E CLI Rules Suite across All Checks", () => {
       ]);
     });
 
-    it("detects barrel-files rules in barrel-export-all.ts and barrel-module", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/eslint/barrel-export-all.ts"], [
+    it("detects barrel-files rules in barrel-export-all.ts and barrel-module", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/eslint/barrel-export-all.ts"], [
         "barrel-files/avoid-re-export-all",
       ]);
 
-      assertCliRuleHits(
+      await assertCliRuleHits(
         ["--json", "e2e-fixtures/eslint/barrel-module/index.ts"],
         ["barrel-files/avoid-barrel-files"],
         { expectedStatus: 0, expectedPassed: true },
       );
     });
 
-    it("detects React, hooks, perf, effect, and compiler rules in react-components.tsx", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/eslint/react-components.tsx"], [
+    it("detects React, hooks, perf, effect, and compiler rules in react-components.tsx", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/eslint/react-components.tsx"], [
         "use-client/require-use-client",
         "react/no-direct-mutation-state",
         "react/jsx-key",
@@ -303,15 +284,15 @@ describe("E2E CLI Rules Suite across All Checks", () => {
       ]);
     });
 
-    it("detects accessibility rules in accessibility.tsx", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/eslint/accessibility.tsx"], [
+    it("detects accessibility rules in accessibility.tsx", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/eslint/accessibility.tsx"], [
         "jsx-a11y/alt-text",
         "jsx-a11y/aria-role",
       ]);
     });
 
-    it("detects vitest and test-smells rules in vitest-test-smells.test.ts", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/eslint/vitest-test-smells.test.ts"], [
+    it("detects vitest and test-smells rules in vitest-test-smells.test.ts", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/eslint/vitest-test-smells.test.ts"], [
         "vitest/no-conditional-in-test",
         "vitest/no-conditional-expect",
         "vitest/no-identical-title",
@@ -325,8 +306,8 @@ describe("E2E CLI Rules Suite across All Checks", () => {
       ]);
     });
 
-    it("detects testing-library rules in testing-library.test.tsx", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/eslint/testing-library.test.tsx"], [
+    it("detects testing-library rules in testing-library.test.tsx", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/eslint/testing-library.test.tsx"], [
         "testing-library/no-node-access",
         "testing-library/no-container",
         "testing-library/prefer-screen-queries",
@@ -338,8 +319,8 @@ describe("E2E CLI Rules Suite across All Checks", () => {
       ]);
     });
 
-    it("detects playwright rules in playwright/flow.test.ts", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/eslint/playwright/flow.test.ts"], [
+    it("detects playwright rules in playwright/flow.test.ts", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/eslint/playwright/flow.test.ts"], [
         "playwright/missing-playwright-await",
         "playwright/no-conditional-in-test",
         "playwright/no-element-handle",
@@ -348,8 +329,8 @@ describe("E2E CLI Rules Suite across All Checks", () => {
       ]);
     });
 
-    it("detects JSDoc rules in jsdoc.ts", () => {
-      assertCliRuleHits(
+    it("detects JSDoc rules in jsdoc.ts", async () => {
+      await assertCliRuleHits(
         ["--json", "e2e-fixtures/eslint/jsdoc.ts"],
         [
           "jsdoc/check-alignment",
@@ -363,33 +344,33 @@ describe("E2E CLI Rules Suite across All Checks", () => {
       );
     });
 
-    it("detects redundant presence checks in presence-check-invalid.ts", () => {
-      assertCliRuleHits(["--json", "e2e-fixtures/eslint/presence-check-invalid.ts"], [
+    it("detects redundant presence checks in presence-check-invalid.ts", async () => {
+      await assertCliRuleHits(["--json", "e2e-fixtures/eslint/presence-check-invalid.ts"], [
         "slop/no-redundant-presence-check",
       ]);
     });
   });
 
   describe("Clean Fixtures and CLI Flags Verification", () => {
-    it("passes with exit code 0 and zero findings on clean test", () => {
-      assertCliClean("e2e-fixtures/clean/clean.test.ts");
+    it("passes with exit code 0 and zero findings on clean test", async () => {
+      await assertCliClean("e2e-fixtures/clean/clean.test.ts");
     });
 
-    it("passes with exit code 0 and zero findings on clean presence check fixture", () => {
-      assertCliClean("e2e-fixtures/clean/clean-presence-check.test.ts");
+    it("passes with exit code 0 and zero findings on clean presence check fixture", async () => {
+      await assertCliClean("e2e-fixtures/clean/clean-presence-check.test.ts");
     });
 
-    it("formats markdown output when --llm is supplied", () => {
-      const result = runCli(["--llm", "e2e-fixtures/strict-ts/syntax-violations.ts"]);
+    it("formats markdown output when --llm is supplied", async () => {
+      const result = await runRuleCli(["--llm", "e2e-fixtures/strict-ts/syntax-violations.ts"]);
 
       expect(result.status).toBe(1);
       expect(result.stdout).toContain("# Anti-AI Slop Review Findings");
       expect(result.stdout).toContain("no-non-null-assertion");
     });
 
-    it("supports --allow-loose-tsconfig to bypass tsconfig strictness errors", () => {
+    it("supports --allow-loose-tsconfig to bypass tsconfig strictness errors", async () => {
       const sandbox = path.join(WORKSPACE_ROOT, "e2e-fixtures/strict-ts/strict-mode-fail");
-      const result = runCli(["--json", "--allow-loose-tsconfig"], { cwd: sandbox });
+      const result = await runRuleCli(["--json", "--allow-loose-tsconfig"], { cwd: sandbox });
 
       expect(result.status).toBe(0);
       expect(result.json?.passed).toBe(true);
@@ -401,8 +382,8 @@ describe("E2E CLI Rules Suite across All Checks", () => {
   });
 
   describe("Default Discovery Scope", () => {
-    it("discovers files in scripts directory by default without blanket exemption", () => {
-      const result = runCli(["--json"]);
+    it("discovers files in scripts directory by default without blanket exemption", async () => {
+      const result = await runRuleCli(["--json"]);
 
       expect(result.json?.totalFilesChecked).toBeGreaterThanOrEqual(45);
     });
