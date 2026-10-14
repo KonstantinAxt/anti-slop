@@ -107,3 +107,12 @@ pnpm run build && node --import tsx bin/anti-slop.ts --staged
 ```
 
 All contributions must pass with **0 errors and 0 warnings**.
+
+## 6. Keep benchmark results out of this repo
+
+anti-slop is measured against benchmarks in a private repository. This repository is public, so its issues, pull requests, commit messages, `CHANGELOG.md`, documentation, tests, and fixtures never contain benchmark results.
+
+- Describe a change by the gap it closes, for example "`--llm-review` misses unhandled promise rejections". Leave out scores, detection rates, and false positive rates.
+- Keep scores out of pull request titles. release-please copies them into `CHANGELOG.md`.
+- Write test fixtures from scratch. Code copied from a benchmark pull request shows which case anti-slop missed.
+- Keep LLM gateway URLs and API keys in environment variables, out of code, docs, and logs.
