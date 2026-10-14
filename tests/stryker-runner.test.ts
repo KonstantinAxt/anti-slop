@@ -172,6 +172,16 @@ describe("Stryker Mutation Runner", () => {
     expect(scoped).toEqual(["src/billing.ts", "src/components/button.tsx"]);
   });
 
+  it("treats files in tests/ and test/ folders as test code, not production code", () => {
+    const scoped = filterProductionFilesForMutation("/repo", [
+      "/repo/tests/cli-process.ts",
+      "/repo/packages/api/test/build-fixture.ts",
+      "/repo/src/contest/entry.ts",
+    ]);
+
+    expect(scoped).toEqual(["src/contest/entry.ts"]);
+  });
+
   it("skips mutation testing if branch only touched tests or documentation", async () => {
     const testOnlyBranchFiles = [
       "tests/checkout.test.ts",

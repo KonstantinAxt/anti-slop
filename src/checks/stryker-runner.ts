@@ -61,6 +61,8 @@ const IGNORED_PATH_PREFIXES = [
   "artifacts/",
   "bin/",
   "scripts/",
+  "tests/",
+  "test/",
 ];
 
 /**
