@@ -119,7 +119,7 @@ describe("LLM review", () => {
 
   it("reviews committed changes larger than git's default output buffer", async () => {
     const targets = createRepo();
-    const largeContent = `/*${"x".repeat(1_100_000)}*/\nexport const changed = true;\n`;
+    const largeContent = `${("// " + "x".repeat(76) + "\n").repeat(14_000)}export const changed = true;\n`;
     fs.writeFileSync(path.join(repoDir, CHANGED_FILE), largeContent);
     git("add", CHANGED_FILE);
     git("commit", "-qm", "large change");
