@@ -29,6 +29,7 @@ export function getStagedFiles(cwd: string): string[] {
 // Query git for modified code files between a reference revision and HEAD
 export function getDiffFilesSince(cwd: string, ref: string): string[] {
   const normalizedRef = ref.replace(/^(origin\/)?refs\/heads\//, "$1");
+
   return runGitDiff(cwd, `${normalizedRef}...HEAD --name-only --diff-filter=ACMR`);
 }
 
@@ -54,6 +55,38 @@ export function getChangedLineRangesSince(cwd: string, ref: string): Map<string,
   }
 
   return parseChangedLineRanges(cwd, diff);
+}
+
+const HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
+
+export function parseAddedLineNumbers(diff: string): Map<string, Set<number>> {
+  const addedByFile = new Map<string, Set<number>>();
+  let file = "";
+  let hunkLines: Set<number> | undefined;
+  let newLine = 0;
+
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      file = "";
+      hunkLines = undefined;
+      continue;
+    }
+    const hunk = HUNK_HEADER.exec(line);
+    if (hunk) {
+      newLine = Number(hunk[1]);
+      hunkLines = addedByFile.get(file) ?? new Set<number>();
+      addedByFile.set(file, hunkLines);
+      continue;
+    }
+    if (hunkLines === undefined) {
+      if (line.startsWith("+++ b/")) file = line.slice("+++ b/".length);
+      continue;
+    }
+    if (line.startsWith("+")) hunkLines.add(newLine++);
+    else if (line.startsWith(" ")) newLine++;
+  }
+
+  return addedByFile;
 }
 
 // With --unified=0 every hunk header "+start,count" is exactly the added line range; count 0 means deletion only.

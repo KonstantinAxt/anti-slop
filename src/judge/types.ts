@@ -22,7 +22,7 @@ export interface JudgeProvenance {
   systemPromptSha256: string; userTemplateSha256: string; schemaVersion: string; schemaSha256: string;
   params: { temperature: number; maxTokens: number; timeoutMs: number; inputTokenCeiling: number; reasoningEffort?: JudgeReasoningEffort };
   engineCommit: string | null; timestamp: string; latencyMs: number;
-  usage?: { inputTokens: number; outputTokens: number }; redactions: number; droppedFiles: string[];
+  usage?: { inputTokens: number; outputTokens: number }; redactions: number; droppedFiles: string[]; droppedFindings: number;
 }
 
 export interface JudgeResult {

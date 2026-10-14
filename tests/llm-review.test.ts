@@ -140,6 +140,16 @@ describe("LLM review", () => {
     expect(review.check.reason).toBe(`Reviewed 2 files with ${TEST_MODEL}: 0 findings, 2 abstained (TIMEOUT 1, MALFORMED_OUTPUT 1)`);
   });
 
+  it("reports findings dropped from unchanged lines", async () => {
+    const targets = createRepo();
+    const response = JSON.stringify({ verdict: "FLAG", findings: [{ file: CHANGED_FILE, line_range: { start: 2, end: 2 }, problem_category: "unnecessary_under_invariant", reason: "The flagged line is unchanged by this diff.", confidence: 0.9 }] });
+    const review = await runLlmReview(repoDir, SINCE_SOURCE, targets, createStaticProvider([response], TEST_MODEL));
+
+    expect(review.findings).toEqual([]);
+    expect(review.check.reason).toBe(`Reviewed 1 files with ${TEST_MODEL}: 0 findings, 0 abstained, 1 off-change dropped`);
+  });
+
+
   it("keeps deterministic findings and the pass state when merging a review", async () => {
     const targets = createRepo();
     const scan = await runAntiSlop({ cwd: repoDir, since: "HEAD~1" });

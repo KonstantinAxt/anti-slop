@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseAddedLineNumbers } from "../git.js";
 import {
   buildUserPrompt,
   JUDGE_SCHEMA_VERSION,
@@ -14,6 +15,7 @@ import { JudgeProviderError } from "./provider.js";
 import { redactJudgeInput } from "./redaction.js";
 import type {
   JudgeAbstainReason,
+  JudgeFinding,
   JudgeInput,
   JudgeProvenance,
   JudgeResult,
@@ -40,6 +42,14 @@ function resolveEngineCommit(): string | null {
 
 const ENGINE_COMMIT = resolveEngineCommit();
 
+function findingIncludesAddedLine(finding: JudgeFinding, addedLines: Map<string, Set<number>>): boolean {
+  const lines = addedLines.get(finding.file) ?? addedLines.get("");
+  if (lines === undefined) return false;
+
+  for (const line of lines) if (line >= finding.line_range.start && line <= finding.line_range.end) return true;
+  return false;
+}
+
 export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): Promise<JudgeResult> {
   const startTime = performance.now();
   const timestamp = new Date().toISOString();
@@ -63,6 +73,7 @@ export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): P
     timestamp,
     redactions: redacted.redactions,
     droppedFiles: redacted.droppedFiles,
+    droppedFindings: 0,
   };
 
   const estimatedTokens = Math.ceil(userPrompt.length / CHARS_PER_TOKEN);
@@ -98,11 +109,13 @@ export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): P
     return { disposition: "ABSTAIN", abstainReason: "MALFORMED_OUTPUT", findings: [], provenance };
   }
 
-  const { verdict, findings, notes } = validation.data;
+  const addedLines = parseAddedLineNumbers(input.diff);
+  const findings = validation.data.findings.filter((finding) => findingIncludesAddedLine(finding, addedLines));
+  provenance.droppedFindings = validation.data.findings.length - findings.length;
 
-  if (verdict === "NEEDS_HUMAN_ATTENTION") {
-    return { disposition: "ABSTAIN", abstainReason: "NEEDS_HUMAN_ATTENTION", findings: [], provenance, ...(notes ? { notes } : {}) };
+  if (validation.data.verdict === "NEEDS_HUMAN_ATTENTION") {
+    return { disposition: "ABSTAIN", abstainReason: "NEEDS_HUMAN_ATTENTION", findings: [], provenance, ...(validation.data.notes ? { notes: validation.data.notes } : {}) };
   }
 
-  return { disposition: verdict, findings, provenance, ...(notes ? { notes } : {}) };
+  return { disposition: findings.length === 0 ? "ALLOW" : "FLAG", findings, provenance, ...(validation.data.notes ? { notes: validation.data.notes } : {}) };
 }

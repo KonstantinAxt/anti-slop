@@ -7,7 +7,7 @@ const CONFIDENCE = 0.95;
 describe("LLM Judge Core Public API", () => {
   it("observed violation -> FLAG with expected file and lines", async () => {
     // Synthetic fixture: observed violation under visible invariant
-    const diff = "@@ -2,3 +2,5 @@\n function get(u: User): string {\n+  if (!u) return 'none';\n }";
+    const diff = ["diff --git a/src/u.ts b/src/u.ts", "--- a/src/u.ts", "+++ b/src/u.ts", "@@ -2,3 +2,5 @@", " function get(u: User): string {", "+  if (!u) return 'none';", " }"].join("\n");
     const file = "interface User { name: string; }\nfunction get(u: User): string {\n  if (!u) return 'none';\n  return u.name;\n}";
     const payload = JSON.stringify({
       verdict: "FLAG",
@@ -144,4 +144,65 @@ describe("LLM Judge Core Public API", () => {
 
     expect(after.passed).toBe(before.passed);
   });
+
+  it("allows a response when every finding targets an unchanged line", async () => {
+    const payload = JSON.stringify({ verdict: "FLAG", findings: [
+      { file: "src/u.ts", line_range: { start: 4, end: 4 }, problem_category: "unnecessary_under_invariant", reason: "Unchanged line outside candidate findings.", confidence: 0.9 },
+    ] });
+    const diff = ["diff --git a/src/u.ts b/src/u.ts", "--- a/src/u.ts", "+++ b/src/u.ts", "@@ -1,3 +1,4 @@", " first", "+added", " third", " last"].join("\n");
+    const res = await reviewWithJudge({ diff, files: [{ path: "src/u.ts", content: "first\nadded\nthird\nlast" }] }, { provider: createStaticProvider([payload], TEST_MODEL) });
+
+    expect(res.disposition).toBe("ALLOW");
+    expect(res.findings).toEqual([]);
+    expect(res.provenance.droppedFindings).toBe(1);
+  });
+
+  it("keeps ranges touching an added line and drops adjacent ranges", async () => {
+    const diff = ["diff --git a/u.ts b/u.ts", "--- a/u.ts", "+++ b/u.ts", "@@ -1,3 +1,4 @@", " first", "+added", " third", " fourth"].join("\n");
+    const payload = JSON.stringify({ verdict: "FLAG", findings: [
+      { file: "u.ts", line_range: { start: 1, end: 2 }, problem_category: "unnecessary_under_invariant", reason: "The range ends on an added line.", confidence: 0.9 },
+      { file: "u.ts", line_range: { start: 2, end: 4 }, problem_category: "unnecessary_under_invariant", reason: "The range starts on an added line.", confidence: 0.9 },
+      { file: "u.ts", line_range: { start: 1, end: 1 }, problem_category: "unnecessary_under_invariant", reason: "This range is just before the added line.", confidence: 0.9 },
+      { file: "u.ts", line_range: { start: 3, end: 3 }, problem_category: "unnecessary_under_invariant", reason: "This range is just after the added line.", confidence: 0.9 },
+    ] });
+
+    const result = await reviewWithJudge({ diff, files: [{ path: "u.ts", content: "first\nadded\nthird\nfourth" }] }, { provider: createStaticProvider([payload], TEST_MODEL) });
+
+    expect(result.disposition).toBe("FLAG");
+    expect(result.findings.map((finding) => finding.line_range)).toEqual([{ start: 1, end: 2 }, { start: 2, end: 4 }]);
+    expect(result.provenance.droppedFindings).toBe(2);
+  });
+
+  it("drops a finding for a file outside the diff", async () => {
+    const diff = ["diff --git a/u.ts b/u.ts", "--- a/u.ts", "+++ b/u.ts", "@@ -3 +3 @@", "+added"].join("\n");
+    const payload = JSON.stringify({ verdict: "FLAG", findings: [
+      { file: "u.ts", line_range: { start: 3, end: 3 }, problem_category: "unnecessary_under_invariant", reason: "The hunk adds line three.", confidence: 0.9 },
+      { file: "other.ts", line_range: { start: 3, end: 3 }, problem_category: "unnecessary_under_invariant", reason: "This file is not in the diff.", confidence: 0.9 },
+    ] });
+
+    const result = await reviewWithJudge({ diff, files: [{ path: "u.ts", content: "one\ntwo\nadded" }, { path: "other.ts", content: "one\ntwo\nthree" }] }, { provider: createStaticProvider([payload], TEST_MODEL) });
+
+    expect(result.disposition).toBe("FLAG");
+    expect(result.findings.map((finding) => finding.file)).toEqual(["u.ts"]);
+    expect(result.provenance.droppedFindings).toBe(1);
+  });
+  it("matches a named-file finding against a pathless added-line hunk", async () => {
+    const diff = "@@ -3 +3 @@\n+added";
+    const payload = JSON.stringify({ verdict: "FLAG", findings: [{ file: "u.ts", line_range: { start: 3, end: 3 }, problem_category: "unnecessary_under_invariant", reason: "The pathless hunk adds line three.", confidence: 0.9 }] });
+
+    const result = await reviewWithJudge({ diff, files: [{ path: "u.ts", content: "one\ntwo\nadded" }] }, { provider: createStaticProvider([payload], TEST_MODEL) });
+
+    expect(result.disposition).toBe("FLAG");
+    expect(result.findings.map((finding) => finding.line_range)).toEqual([{ start: 3, end: 3 }]);
+    expect(result.provenance.droppedFindings).toBe(0);
+  });
+
+  it("preserves notes when the judge requests human attention", async () => {
+    const payload = JSON.stringify({ verdict: "NEEDS_HUMAN_ATTENTION", findings: [], notes: "The invariant is outside the supplied context." });
+    const result = await reviewWithJudge({ diff: "@@ -1 +1 @@\n+added", files: [{ path: "u.ts", content: "added" }] }, { provider: createStaticProvider([payload], TEST_MODEL) });
+
+    expect(result.disposition).toBe("ABSTAIN");
+    expect(result.notes).toBe("The invariant is outside the supplied context.");
+  });
+
 });

@@ -51,15 +51,15 @@ function readReviewFile(cwd: string, absolutePath: string, contentPrefix: Review
   return execFileSync("git", ["show", `${contentPrefix}./${relativePath}`], { cwd, encoding: "utf-8", maxBuffer: Infinity });
 }
 
-async function reviewChangedFile(cwd: string, absolutePath: string, diffSource: ReviewDiffSource, provider: JudgeProvider): Promise<{ findings: Finding[]; reviewed: boolean; abstainReason?: JudgeAbstainReason }> {
+async function reviewChangedFile(cwd: string, absolutePath: string, diffSource: ReviewDiffSource, provider: JudgeProvider): Promise<{ findings: Finding[]; reviewed: boolean; droppedFindings: number; abstainReason?: JudgeAbstainReason }> {
   const relativePath = path.relative(cwd, absolutePath);
   const diff = execFileSync("git", ["diff", ...diffSource.args, "--", relativePath], { cwd, encoding: "utf-8", maxBuffer: Infinity });
-  if (diff === "") return { findings: [], reviewed: false };
-  if (diff.split("\n").includes("+++ /dev/null")) return { findings: [], reviewed: false };
+  if (diff === "") return { findings: [], reviewed: false, droppedFindings: 0 };
+  if (diff.split("\n").includes("+++ /dev/null")) return { findings: [], reviewed: false, droppedFindings: 0 };
   const content = readReviewFile(cwd, absolutePath, diffSource.contentPrefix);
   const result = await reviewWithJudge({ diff, files: [{ path: relativePath, content }] }, { provider });
 
-  return { findings: result.findings.map(toFinding), reviewed: true, ...(result.abstainReason ? { abstainReason: result.abstainReason } : {}) };
+  return { findings: result.findings.map(toFinding), reviewed: true, droppedFindings: result.provenance.droppedFindings, ...(result.abstainReason ? { abstainReason: result.abstainReason } : {}) };
 }
 
 // Reviews changed code files with content from the diff's new side, skipping files deleted there.
@@ -69,11 +69,13 @@ export async function runLlmReview(cwd: string, source: ReviewSource, targetFile
   const abstentions = new Map<JudgeAbstainReason, number>();
   const diffSource = resolveReviewDiffSource(source);
   let reviewed = 0;
+  let droppedFindings = 0;
 
   for (const absolutePath of targetFiles) {
     if (!REVIEWABLE_EXTENSIONS[path.extname(absolutePath)]) continue;
     const result = await reviewChangedFile(cwd, absolutePath, diffSource, provider);
     reviewed += Number(result.reviewed);
+    droppedFindings += result.droppedFindings;
     if (result.abstainReason) abstentions.set(result.abstainReason, (abstentions.get(result.abstainReason) ?? 0) + 1);
     findings.push(...result.findings);
   }
@@ -84,7 +86,7 @@ export async function runLlmReview(cwd: string, source: ReviewSource, targetFile
       check: LLM_REVIEW_CHECK,
       status: "completed",
       findingsCount: findings.length,
-      reason: `Reviewed ${reviewed} files with ${provider.model}: ${findings.length} findings, ${describeAbstentions(abstentions)}`,
+      reason: `Reviewed ${reviewed} files with ${provider.model}: ${findings.length} findings, ${describeAbstentions(abstentions)}${droppedFindings > 0 ? `, ${droppedFindings} off-change dropped` : ""}`,
     },
   };
 }
