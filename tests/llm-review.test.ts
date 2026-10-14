@@ -46,7 +46,6 @@ function captureProvider(prompts: string[]): JudgeProvider {
 const SINCE_SOURCE: ReviewSource = { kind: "since", ref: "HEAD~1" };
 const STAGED_SOURCE: ReviewSource = { kind: "staged" };
 
-
 // Two commits change two code files and one non-code file while leaving one code file unchanged.
 function createRepo(): string[] {
   repoDir = fs.mkdtempSync(path.join(os.tmpdir(), "anti-slop-llm-review-"));
@@ -118,6 +117,17 @@ describe("LLM review", () => {
     expect(review.check.reason).toBe(`Reviewed 0 files with ${TEST_MODEL}: 0 findings, 0 abstained`);
   });
 
+  it("reviews committed changes larger than git's default output buffer", async () => {
+    const targets = createRepo();
+    const largeContent = `/*${"x".repeat(1_100_000)}*/\nexport const changed = true;\n`;
+    fs.writeFileSync(path.join(repoDir, CHANGED_FILE), largeContent);
+    git("add", CHANGED_FILE);
+    git("commit", "-qm", "large change");
+
+    const review = await runLlmReview(repoDir, SINCE_SOURCE, [targets[2] ?? ""], createStaticProvider([], TEST_MODEL));
+
+    expect(review.check.reason).toBe(`Reviewed 1 files with ${TEST_MODEL}: 0 findings, 1 abstained (TOKEN_CEILING 1)`);
+  });
 
   it("counts provider timeouts and malformed output as abstentions, not a clean review", async () => {
     createRepo();
@@ -128,7 +138,6 @@ describe("LLM review", () => {
 
     expect(review.check.reason).toBe(`Reviewed 2 files with ${TEST_MODEL}: 0 findings, 2 abstained (TIMEOUT 1, MALFORMED_OUTPUT 1)`);
   });
-
 
   it("keeps deterministic findings and the pass state when merging a review", async () => {
     const targets = createRepo();
