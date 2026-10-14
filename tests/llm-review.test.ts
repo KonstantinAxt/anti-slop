@@ -80,16 +80,16 @@ describe("LLM review", () => {
     expect(review.check).toEqual({ check: LLM_REVIEW_CHECK, status: "completed", findingsCount: 1, reason: `Reviewed 1 files with ${TEST_MODEL}: 1 findings, 0 abstained` });
   });
 
-  it("uses committed content for the same HEAD revision as a since diff", async () => {
+  it("uses committed content for a since diff when the index differs from HEAD", async () => {
     const targets = createRepo();
-    const workingTreeContent = `// uncommitted one\n// uncommitted two\n${AFTER}`;
-    fs.writeFileSync(path.join(repoDir, CHANGED_FILE), workingTreeContent);
+    fs.writeFileSync(path.join(repoDir, CHANGED_FILE), `// staged but uncommitted\n${AFTER}`);
+    git("add", CHANGED_FILE);
     const prompts: string[] = [];
 
     await runLlmReview(repoDir, SINCE_SOURCE, [targets[2] ?? ""], captureProvider(prompts));
 
     expect(prompts[0]).toContain(`--- File: ${CHANGED_FILE} ---\n${AFTER}`);
-    expect(prompts[0]).not.toContain("// uncommitted one");
+    expect(prompts[0]).not.toContain("// staged but uncommitted");
   });
 
   it("uses staged content when the working tree has further unstaged edits", async () => {

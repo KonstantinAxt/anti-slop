@@ -34,28 +34,27 @@ function describeAbstentions(abstentions: Map<JudgeAbstainReason, number>): stri
   return `${total} abstained (${parts.join(", ")})`;
 }
 
-type ReviewDiffSource = { args: string[]; revision: "HEAD" | ":" };
+type ReviewDiffSource = { args: string[]; contentPrefix: "HEAD:" | ":" };
 
 function resolveReviewDiffSource(source: ReviewSource): ReviewDiffSource {
   switch (source.kind) {
-    case "since": return { args: [`${source.ref}...HEAD`], revision: "HEAD" };
-    case "staged": return { args: ["--cached"], revision: ":" };
+    case "since": return { args: [`${source.ref}...HEAD`], contentPrefix: "HEAD:" };
+    case "staged": return { args: ["--cached"], contentPrefix: ":" };
   }
 }
 
-function readReviewFile(cwd: string, absolutePath: string, revision: ReviewDiffSource["revision"]): string {
+function readReviewFile(cwd: string, absolutePath: string, contentPrefix: ReviewDiffSource["contentPrefix"]): string {
   const relativePath = path.relative(cwd, absolutePath);
-  const gitRevision = revision === "HEAD" ? `HEAD:./${relativePath}` : `:./${relativePath}`;
 
-  return execFileSync("git", ["show", gitRevision], { cwd, encoding: "utf-8", maxBuffer: Infinity, stdio: ["ignore", "pipe", "ignore"] });
+  return execFileSync("git", ["show", `${contentPrefix}./${relativePath}`], { cwd, encoding: "utf-8", maxBuffer: Infinity });
 }
 
 async function reviewChangedFile(cwd: string, absolutePath: string, diffSource: ReviewDiffSource, provider: JudgeProvider): Promise<{ findings: Finding[]; reviewed: boolean; abstainReason?: JudgeAbstainReason }> {
   const relativePath = path.relative(cwd, absolutePath);
-  const diff = execFileSync("git", ["diff", ...diffSource.args, "--", relativePath], { cwd, encoding: "utf-8", maxBuffer: Infinity, stdio: ["ignore", "pipe", "ignore"] });
+  const diff = execFileSync("git", ["diff", ...diffSource.args, "--", relativePath], { cwd, encoding: "utf-8", maxBuffer: Infinity });
   if (diff === "") return { findings: [], reviewed: false };
-  if (diff.split("\n").some((line) => line.startsWith("+++ /dev/null"))) return { findings: [], reviewed: false };
-  const content = readReviewFile(cwd, absolutePath, diffSource.revision);
+  if (diff.split("\n").includes("+++ /dev/null")) return { findings: [], reviewed: false };
+  const content = readReviewFile(cwd, absolutePath, diffSource.contentPrefix);
   const result = await reviewWithJudge({ diff, files: [{ path: relativePath, content }] }, { provider });
 
   return { findings: result.findings.map(toFinding), reviewed: true, ...(result.abstainReason ? { abstainReason: result.abstainReason } : {}) };
