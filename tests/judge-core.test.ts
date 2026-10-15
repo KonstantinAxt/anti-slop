@@ -186,6 +186,7 @@ describe("LLM Judge Core Public API", () => {
     expect(result.findings.map((finding) => finding.file)).toEqual(["u.ts"]);
     expect(result.provenance.droppedFindings).toBe(1);
   });
+
   it("matches a named-file finding against a pathless added-line hunk", async () => {
     const diff = "@@ -3 +3 @@\n+added";
     const payload = JSON.stringify({ verdict: "FLAG", findings: [{ file: "u.ts", line_range: { start: 3, end: 3 }, problem_category: "unnecessary_under_invariant", reason: "The pathless hunk adds line three.", confidence: 0.9 }] });
@@ -204,5 +205,4 @@ describe("LLM Judge Core Public API", () => {
     expect(result.disposition).toBe("ABSTAIN");
     expect(result.notes).toBe("The invariant is outside the supplied context.");
   });
-
 });

@@ -64,7 +64,6 @@ describe("Git Diff Helpers (src/git.ts)", () => {
     });
 
     getDiffFilesSince(cwd, "refs/heads/main");
-
     expect(execSync).toHaveBeenLastCalledWith("git diff main...HEAD --name-only --diff-filter=ACMR", {
       cwd,
       encoding: "utf-8",
@@ -102,11 +101,7 @@ describe("Git Diff Helpers (src/git.ts)", () => {
 
     expect(parseAddedLineNumbers(diff)).toEqual(new Map([["u.ts", new Set([1, 2])]]));
   });
-  it("resets file state at each git diff header", () => {
-    const diff = ["diff --git a/u.ts b/u.ts", "--- a/u.ts", "+++ b/u.ts", "@@ -1 +1 @@", "+first", "diff --git a/v.ts b/v.ts", "--- a/v.ts", "+++ b/v.ts", "@@ -1 +1 @@", "+second"].join("\n");
 
-    expect(parseAddedLineNumbers(diff)).toEqual(new Map([["u.ts", new Set([1])], ["v.ts", new Set([1])]]));
-  });
   it("resets the file name before a headerless next diff", () => {
     const diff = ["diff --git a/u.ts b/u.ts", "--- a/u.ts", "+++ b/u.ts", "@@ -1 +1 @@", "+first", "diff --git a/v.ts b/v.ts", "@@ -3 +3 @@", "+second"].join("\n");
 

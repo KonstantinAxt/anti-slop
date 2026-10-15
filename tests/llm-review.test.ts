@@ -148,7 +148,15 @@ describe("LLM review", () => {
     expect(review.findings).toEqual([]);
     expect(review.check.reason).toBe(`Reviewed 1 files with ${TEST_MODEL}: 0 findings, 0 abstained, 1 off-change dropped`);
   });
+  it("keeps added-line findings when run from a subdirectory", async () => {
+    const targets = createRepo();
+    const subdirectory = path.join(repoDir, "src");
+    const response = JSON.stringify({ verdict: "FLAG", findings: [{ file: "u.ts", line_range: { start: FLAGGED_LINE, end: FLAGGED_END_LINE }, problem_category: "unnecessary_under_invariant", reason: "Redundant null check: User is non-null.", confidence: 0.9 }] });
+    const review = await runLlmReview(subdirectory, SINCE_SOURCE, [path.join(subdirectory, "u.ts")], createStaticProvider([response], TEST_MODEL));
 
+    expect(review.findings.map((finding) => [finding.file, finding.line])).toEqual([["u.ts", FLAGGED_LINE]]);
+    expect(review.check.reason).toBe(`Reviewed 1 files with ${TEST_MODEL}: 1 findings, 0 abstained`);
+  });
 
   it("keeps deterministic findings and the pass state when merging a review", async () => {
     const targets = createRepo();

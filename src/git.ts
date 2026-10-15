@@ -29,7 +29,6 @@ export function getStagedFiles(cwd: string): string[] {
 // Query git for modified code files between a reference revision and HEAD
 export function getDiffFilesSince(cwd: string, ref: string): string[] {
   const normalizedRef = ref.replace(/^(origin\/)?refs\/heads\//, "$1");
-
   return runGitDiff(cwd, `${normalizedRef}...HEAD --name-only --diff-filter=ACMR`);
 }
 

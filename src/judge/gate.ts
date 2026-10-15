@@ -53,7 +53,7 @@ function readReviewFile(cwd: string, absolutePath: string, contentPrefix: Review
 
 async function reviewChangedFile(cwd: string, absolutePath: string, diffSource: ReviewDiffSource, provider: JudgeProvider): Promise<{ findings: Finding[]; reviewed: boolean; droppedFindings: number; abstainReason?: JudgeAbstainReason }> {
   const relativePath = path.relative(cwd, absolutePath);
-  const diff = execFileSync("git", ["diff", ...diffSource.args, "--", relativePath], { cwd, encoding: "utf-8", maxBuffer: Infinity });
+  const diff = execFileSync("git", ["diff", ...diffSource.args, "--relative", "--", relativePath], { cwd, encoding: "utf-8", maxBuffer: Infinity });
   if (diff === "") return { findings: [], reviewed: false, droppedFindings: 0 };
   if (diff.split("\n").includes("+++ /dev/null")) return { findings: [], reviewed: false, droppedFindings: 0 };
   const content = readReviewFile(cwd, absolutePath, diffSource.contentPrefix);
