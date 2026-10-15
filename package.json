@@ -1,6 +1,6 @@
 {
   "name": "anti-slop",
-  "version": "0.1.60",
+  "version": "0.1.61",
   "module": "src/index.ts",
   "type": "module",
   "packageManager": "pnpm@10.34.5",
