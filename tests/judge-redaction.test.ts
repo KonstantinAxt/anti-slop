@@ -48,6 +48,34 @@ describe("LLM Judge Secret Redaction", () => {
 
     expect(receivedUserPrompt.includes("[REDACTED]")).toBe(true);
   });
+  it("keeps original line numbers after redacting a PEM block", async () => {
+    let receivedUserPrompt = "";
+    const provider = {
+      name: "inspecting-provider",
+      model: "test-model",
+      endpoint: "test://mock",
+      async complete(req: { user: string }): Promise<{ text: string }> {
+        receivedUserPrompt = req.user;
+        return { text: JSON.stringify({ verdict: "ALLOW", findings: [] }) };
+      },
+    };
+    const content = [
+      "const before = 1;",
+      "-----BEGIN PRIVATE KEY-----",
+      "secret-private-key-material",
+      "-----END PRIVATE KEY-----",
+      "const afterPem = 2;",
+      "const alsoAfter = 3;",
+      "const added = 4;",
+    ].join("\n");
+    const diff = ["diff --git a/src/auth.ts b/src/auth.ts", "--- a/src/auth.ts", "+++ b/src/auth.ts", "@@ -6 +7 @@", "+const added = 4;"].join("\n");
+
+    const result = await reviewWithJudge({ diff, files: [{ path: "src/auth.ts", content }] }, { provider });
+
+    expect(result.disposition).toBe("ALLOW");
+    expect(receivedUserPrompt).toContain("\t7 + | const added = 4;");
+    expect(receivedUserPrompt).not.toContain("secret-private-key-material");
+  });
   it("redacts secrets in summaries and counts each masked secret", async () => {
     let receivedUserPrompt = "";
     const secret = "ghp_0123456789abcdef0123456789abcdef0123";

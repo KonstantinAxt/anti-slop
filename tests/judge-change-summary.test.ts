@@ -242,15 +242,9 @@ describe("judge change summary", () => {
       "Subject $' TOKEN",
       "</change_summary>",
       "",
-      "Please review the following git diff and associated files.",
+      "Please review the numbered file below. The left column gives line numbers in the new file. A + marker identifies an added line. A - marker identifies a removed line, which has no line number.",
       "",
-      "<git_diff>",
-      "diff $' TOKEN",
-      "</git_diff>",
       "",
-      "<files>",
-      "",
-      "</files>",
     ].join("\n"));
   });
 
@@ -276,7 +270,72 @@ describe("judge change summary", () => {
     expect(summary.endsWith("... 18 more files")).toBe(true);
   });
 
+  it("shows removed lines without assigning them new-file line numbers", () => {
+    const diff = ["diff --git a/u.ts b/u.ts", "--- a/u.ts", "+++ b/u.ts", "@@ -1,3 +1,2 @@", " unchanged", "-removed", " context"].join("\n");
+
+    expect(buildUserPrompt(diff, [{ path: "u.ts", content: "unchanged\ncontext" }])).toContain("\t1   | unchanged\n\t  - | removed\n\t2   | context");
+  });
+  it("places deletion-only hunks after their preceding new-file line", () => {
+    const diff = ["diff --git a/u.ts b/u.ts", "--- a/u.ts", "+++ b/u.ts", "@@ -2 +1,0 @@", "-removed"].join("\n");
+
+    expect(buildUserPrompt(diff, [{ path: "u.ts", content: "unchanged" }])).toContain("\t1   | unchanged\n\t  - | removed");
+  });
+  it("keeps removed lines with their deleted file path", () => {
+    const diff = [
+      "diff --git a/deleted.ts b/deleted.ts",
+      "--- a/deleted.ts",
+      "+++ /dev/null",
+      "@@ -1,2 +0,0 @@",
+      "-export const removedOne = 1;",
+      "-export const removedTwo = 2;",
+      "diff --git a/u.ts b/u.ts",
+      "--- a/u.ts",
+      "+++ b/u.ts",
+      "@@ -1 +1,2 @@",
+      " unchanged",
+      "+added",
+    ].join("\n");
+
+    const prompt = buildUserPrompt(diff, [{ path: "u.ts", content: "unchanged\nadded" }, { path: "caller.ts", content: "context" }]);
+
+    expect(prompt).toContain('<file path="u.ts">');
+    expect(prompt).toContain("\t1   | unchanged");
+    expect(prompt).not.toContain("removedOne");
+    expect(prompt).not.toContain("removedTwo");
+    expect(prompt).toContain('<file path="caller.ts">');
+  });
+
+  it("numbers the new file, marks added lines, and includes removed lines without new-file numbers", () => {
+    const diff = [
+      "diff --git a/src/u.ts b/src/u.ts",
+      "--- a/src/u.ts",
+      "+++ b/src/u.ts",
+      "@@ -1,4 +1,5 @@",
+      " unchanged one",
+      "-removed",
+      "+added one",
+      " unchanged two",
+      "+added two",
+    ].join("\n");
+
+    expect(buildUserPrompt(diff, [{ path: "src/u.ts", content: "unchanged one\nadded one\nunchanged two\nadded two\n" }])).toBe([
+      "Please review the numbered file below. The left column gives line numbers in the new file. A + marker identifies an added line. A - marker identifies a removed line, which has no line number.",
+      "",
+      '<file path="src/u.ts">',
+      "\t1   | unchanged one",
+      "\t  - | removed",
+      "\t2 + | added one",
+      "\t3   | unchanged two",
+      "\t4 + | added two",
+      "</file>",
+    ].join("\n"));
+  });
+
+  it("keeps the change summary before numbered files", () => {
+    expect(buildUserPrompt("", [{ path: "src/a.ts", content: "alpha" }], "intent")).toContain("<change_summary>\nintent\n</change_summary>\n\n");
+  });
+
   it("omits the summary block when summary is absent", () => {
-    expect(buildUserPrompt("diff", [])).toBe("Please review the following git diff and associated files.\n\n<git_diff>\ndiff\n</git_diff>\n\n<files>\n\n</files>");
+    expect(buildUserPrompt("", [])).toBe("Please review the numbered file below. The left column gives line numbers in the new file. A + marker identifies an added line. A - marker identifies a removed line, which has no line number.\n\n");
   });
 });

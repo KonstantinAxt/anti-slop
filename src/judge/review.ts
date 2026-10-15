@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseAddedLineNumbers } from "../git.js";
+import { parseDiffLineNumbers } from "../git.js";
 import {
   buildUserPrompt,
   JUDGE_SCHEMA_VERSION,
@@ -12,7 +12,7 @@ import {
   USER_TEMPLATE_SHA256,
 } from "./prompt.js";
 import { JudgeProviderError } from "./provider.js";
-import { redactJudgeInput } from "./redaction.js";
+import { isDroppedJudgeFilePath, redactJudgeInput } from "./redaction.js";
 import type {
   JudgeAbstainReason,
   JudgeFinding,
@@ -57,8 +57,11 @@ export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): P
   const maxTokens = opts.maxTokens ?? DEFAULT_MAX_TOKENS;
   const inputTokenCeiling = opts.inputTokenCeiling ?? DEFAULT_INPUT_TOKEN_CEILING;
 
-  const redacted = redactJudgeInput(input);
-  const userPrompt = buildUserPrompt(redacted.diff, redacted.files, redacted.summary);
+  const redactedInput = redactJudgeInput(input);
+  const reviewFiles = input.files.filter((file) => !isDroppedJudgeFilePath(file.path));
+  const rawUserPrompt = buildUserPrompt(input.diff, reviewFiles, input.summary);
+  const redactedPrompt = redactJudgeInput({ diff: rawUserPrompt, files: [] });
+  const userPrompt = redactedPrompt.diff;
 
   const base = {
     provider: opts.provider.name,
@@ -71,8 +74,8 @@ export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): P
     params: { temperature: 0, maxTokens, timeoutMs, inputTokenCeiling, ...(opts.reasoningEffort ? { reasoningEffort: opts.reasoningEffort } : {}) },
     engineCommit: ENGINE_COMMIT,
     timestamp,
-    redactions: redacted.redactions,
-    droppedFiles: redacted.droppedFiles,
+    redactions: redactedPrompt.redactions,
+    droppedFiles: redactedInput.droppedFiles,
     droppedFindings: 0,
   };
 
@@ -103,13 +106,13 @@ export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): P
 
   const latencyMs = Math.round(performance.now() - startTime);
   const provenance: JudgeProvenance = { ...base, latencyMs, ...(completion.usage != null ? { usage: completion.usage } : {}) };
-  const validation = validateJudgeOutput(completion.text, redacted.files);
+  const validation = validateJudgeOutput(completion.text, reviewFiles);
 
   if (!validation.ok) {
     return { disposition: "ABSTAIN", abstainReason: "MALFORMED_OUTPUT", findings: [], provenance };
   }
 
-  const addedLines = parseAddedLineNumbers(input.diff);
+  const addedLines = parseDiffLineNumbers(input.diff).added;
   const findings = validation.data.findings.filter((finding) => findingIncludesAddedLine(finding, addedLines));
   provenance.droppedFindings = validation.data.findings.length - findings.length;
 

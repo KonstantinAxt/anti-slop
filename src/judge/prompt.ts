@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { parseDiffLineNumbers } from "../git.js";
 
 export const JUDGE_SCHEMA_VERSION = "2026-10-01";
 
@@ -32,32 +33,62 @@ const JUDGE_SCHEMA = {
 
 export const SYSTEM_PROMPT = `You are an expert code review semantic judge in the anti-slop review gate.
 Your task is to review added code changes for a single semantic defect category: "unnecessary_under_invariant".
-The change summary states intent; only the code is evidence for a finding.
+The change summary states intent; only the numbered file is evidence for a finding.
 
 ## Evaluation Rubric: unnecessary_under_invariant
 Code that existing invariants make unnecessary (defensive checks, redundant guards, fast paths, null/undefined checks, copies, or fallbacks that types, call sites, or earlier guards rule out).
-Candidates: Consider ONLY newly added lines in the diff as candidate findings. Existing unchanged code is context.
+Candidates: Consider ONLY lines marked + in the numbered file as candidate findings. Unmarked lines are context. A removed line is not part of the new file and has no line number.
 Boundaries:
-1. Positive Boundary (FLAG): Invariant ruling out added code is visible in diff or provided files.
+1. Positive Boundary (FLAG): Invariant ruling out added code is visible in the numbered file.
 2. Benign Lookalike Boundary (ALLOW): Defensive checks at real trust boundaries (parsed user input, unknown/any data, untyped JS).
-3. Insufficient Context Boundary (NEEDS_HUMAN_ATTENTION): Invariant lives only outside provided files. Do not guess.
+3. Insufficient Context Boundary (NEEDS_HUMAN_ATTENTION): Invariant lives only outside the numbered file. Do not guess.
 
 ## Output Requirements
 Respond with valid JSON:
 - Top-level keys: "verdict" ("FLAG" | "ALLOW" | "NEEDS_HUMAN_ATTENTION"), "findings" (array), optional "notes" (string). No other keys.
-- Each finding has exactly these keys: "file" (a path from the provided files), "line_range" ({"start": integer, "end": integer}, 1-based line numbers in that file, start <= end), "problem_category" ("unnecessary_under_invariant"), "reason" (10 to 1000 characters naming the invariant and where it is visible), "confidence" (number from 0 to 1), optional "suggested_fix" (string). No other keys.
+- Each finding has exactly these keys: "file" (a path from the numbered file), "line_range" ({"start": integer, "end": integer}, 1-based line numbers from the left column of the numbered file, start <= end), "problem_category" ("unnecessary_under_invariant"), "reason" (10 to 1000 characters naming the invariant and where it is visible), "confidence" (number from 0 to 1), optional "suggested_fix" (string). No other keys.
 - If verdict is "FLAG", findings must NOT be empty. If verdict is "ALLOW" or "NEEDS_HUMAN_ATTENTION", findings MUST be empty [].
 - Output ONLY the JSON object, optionally wrapped in a single \`\`\`json fenced block.`;
 
-const USER_TEMPLATE = `{{SUMMARY_BLOCK}}Please review the following git diff and associated files.
+const USER_TEMPLATE = `{{SUMMARY_BLOCK}}Please review the numbered file below. The left column gives line numbers in the new file. A + marker identifies an added line. A - marker identifies a removed line, which has no line number.
 
-<git_diff>
-{{DIFF}}
-</git_diff>
+{{FILES}}`;
 
-<files>
-{{FILES}}
-</files>`;
+function numberedFile(file: { path: string; content: string }, addedLines: Set<number> | undefined, removedLines: Map<number, string[]> | undefined): string {
+  const lines = file.content === "" ? [] : file.content.split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  const width = String(Math.max(lines.length, 1)).length;
+  const numbered = [`<file path="${file.path}">`];
+
+  for (let line = 1; line <= lines.length; line++) {
+    if (removedLines !== undefined) {
+      const removedAtLine = removedLines.get(line);
+      if (removedAtLine !== undefined) {
+        for (const removed of removedAtLine) numbered.push(`\t${" ".repeat(width)} - | ${removed}`);
+      }
+    }
+    const marker = addedLines?.has(line) ? "+" : " ";
+    numbered.push(`\t${String(line).padStart(width)} ${marker} | ${lines[line - 1]}`);
+  }
+
+  if (removedLines !== undefined) {
+    for (const [position, removedAtLine] of removedLines) {
+      if (position <= lines.length) continue;
+      for (const removed of removedAtLine) numbered.push(`\t${" ".repeat(width)} - | ${removed}`);
+    }
+  }
+
+  numbered.push("</file>");
+  return numbered.join("\n");
+}
+
+export function buildUserPrompt(diff: string, files: { path: string; content: string }[], summary?: string): string {
+  const lineNumbers = parseDiffLineNumbers(diff);
+  const formatted = files.map((file) => numberedFile(file, lineNumbers.added.get(file.path) ?? lineNumbers.added.get(""), lineNumbers.removed.get(file.path))).join("\n\n");
+  const summaryBlock = summary === undefined ? "" : `<change_summary>\n${summary}\n</change_summary>\n\n`;
+
+  return USER_TEMPLATE.replace("{{SUMMARY_BLOCK}}", () => summaryBlock).replace("{{FILES}}", () => formatted);
+}
 
 function sha256(str: string): string {
   return createHash("sha256").update(str, "utf8").digest("hex");
@@ -66,13 +97,3 @@ function sha256(str: string): string {
 export const SYSTEM_PROMPT_SHA256 = sha256(SYSTEM_PROMPT);
 export const USER_TEMPLATE_SHA256 = sha256(USER_TEMPLATE);
 export const SCHEMA_SHA256 = sha256(JSON.stringify(JUDGE_SCHEMA));
-
-export function buildUserPrompt(diff: string, files: { path: string; content: string }[], summary?: string): string {
-  const formatted = files.map((file) => `--- File: ${file.path} ---\n${file.content}`).join("\n\n");
-  const summaryBlock = summary === undefined ? "" : `<change_summary>\n${summary}\n</change_summary>\n\n`;
-
-  return USER_TEMPLATE
-    .replace("{{SUMMARY_BLOCK}}", () => summaryBlock)
-    .replace("{{DIFF}}", () => diff)
-    .replace("{{FILES}}", () => formatted);
-}
