@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import * as ts from "typescript";
+import { createSourceFile } from "../checks/ast.js";
 import { parseDiffLineNumbers } from "../git.js";
 
 export const JUDGE_SCHEMA_VERSION = "2026-10-01";
@@ -37,11 +39,11 @@ The change summary states intent; only the numbered file is evidence for a findi
 
 ## Evaluation Rubric: unnecessary_under_invariant
 Code that existing invariants make unnecessary (defensive checks, redundant guards, fast paths, null/undefined checks, copies, or fallbacks that types, call sites, or earlier guards rule out).
-Candidates: Consider ONLY lines marked + in the numbered file as candidate findings. Unmarked lines are context. A removed line is not part of the new file and has no line number.
+Candidates: Consider ONLY lines marked + in the numbered view as candidate findings. Unmarked lines are context. A removed line is not part of the new file and has no line number. The view may omit unchanged lines and entire declarations. Treat each omission marker as missing evidence. If an invariant could be in omitted lines, return NEEDS_HUMAN_ATTENTION rather than guessing.
 Boundaries:
-1. Positive Boundary (FLAG): Invariant ruling out added code is visible in the numbered file.
+1. Positive Boundary (FLAG): Invariant ruling out added code is visible in the numbered view.
 2. Benign Lookalike Boundary (ALLOW): Defensive checks at real trust boundaries (parsed user input, unknown/any data, untyped JS).
-3. Insufficient Context Boundary (NEEDS_HUMAN_ATTENTION): Invariant lives only outside the numbered file. Do not guess.
+3. Insufficient Context Boundary (NEEDS_HUMAN_ATTENTION): Invariant lives only outside the numbered view, including omitted lines. Do not guess.
 
 ## Output Requirements
 Respond with valid JSON:
@@ -54,13 +56,23 @@ const USER_TEMPLATE = `{{SUMMARY_BLOCK}}Please review the numbered file below. T
 
 {{FILES}}`;
 
-function numberedFile(file: { path: string; content: string }, addedLines: Set<number> | undefined, removedLines: Map<number, string[]> | undefined): string {
+
+function numberedFile(file: { path: string; content: string }, addedLines: Set<number> | undefined, removedLines: Map<number, string[]> | undefined, includedLines?: Set<number>): string {
   const lines = file.content === "" ? [] : file.content.split("\n");
   if (lines.at(-1) === "") lines.pop();
   const width = String(Math.max(lines.length, 1)).length;
   const numbered = [`<file path="${file.path}">`];
+  let omittedStart = 0;
 
   for (let line = 1; line <= lines.length; line++) {
+    if (includedLines !== undefined && !includedLines.has(line)) {
+      omittedStart ||= line;
+      continue;
+    }
+    if (omittedStart !== 0) {
+      numbered.push(`... lines ${omittedStart}-${line - 1} unchanged, omitted`);
+      omittedStart = 0;
+    }
     if (removedLines !== undefined) {
       const removedAtLine = removedLines.get(line);
       if (removedAtLine !== undefined) {
@@ -71,6 +83,7 @@ function numberedFile(file: { path: string; content: string }, addedLines: Set<n
     numbered.push(`\t${String(line).padStart(width)} ${marker} | ${lines[line - 1]}`);
   }
 
+  if (omittedStart !== 0) numbered.push(`... lines ${omittedStart}-${lines.length} unchanged, omitted`);
   if (removedLines !== undefined) {
     for (const [position, removedAtLine] of removedLines) {
       if (position <= lines.length) continue;
@@ -82,12 +95,60 @@ function numberedFile(file: { path: string; content: string }, addedLines: Set<n
   return numbered.join("\n");
 }
 
-export function buildUserPrompt(diff: string, files: { path: string; content: string }[], summary?: string): string {
-  const lineNumbers = parseDiffLineNumbers(diff);
-  const formatted = files.map((file) => numberedFile(file, lineNumbers.added.get(file.path) ?? lineNumbers.added.get(""), lineNumbers.removed.get(file.path))).join("\n\n");
-  const summaryBlock = summary === undefined ? "" : `<change_summary>\n${summary}\n</change_summary>\n\n`;
+function declarationWindowLines(file: { path: string; content: string }, addedLines: Set<number> | undefined, removedLines: Map<number, string[]> | undefined): Set<number> {
+  const sourceFile = createSourceFile(file.path, file.content);
+  const included = new Set<number>();
+  const changed = new Set(addedLines ?? []);
+  for (const line of removedLines?.keys() ?? []) changed.add(line);
+  const statementRanges = sourceFile.statements.map((statement, index) => {
+    const start = sourceFile.getLineAndCharacterOfPosition(statement.getStart(sourceFile)).line + 1;
+    const end = sourceFile.getLineAndCharacterOfPosition(statement.getEnd()).line + 1;
+    const previousEnd = index === 0 ? 0 : sourceFile.getLineAndCharacterOfPosition(sourceFile.statements[index - 1]?.getEnd() ?? 0).line + 1;
+    const leadingComments = ts.getLeadingCommentRanges(file.content, statement.getFullStart()) ?? [];
+    const commentStart = leadingComments.length === 0 ? start : sourceFile.getLineAndCharacterOfPosition(leadingComments[0]?.pos ?? 0).line + 1;
+    const leadingStart = Math.min(start, commentStart);
+    const leadingStartWithBlank = leadingStart > previousEnd + 1 ? previousEnd + 1 : leadingStart;
+    return { statement, start: leadingStartWithBlank, end };
+  });
 
+  for (const { statement, start, end } of statementRanges) {
+    const required = ts.isImportDeclaration(statement)
+      || ts.isImportEqualsDeclaration(statement)
+      || ts.isExportDeclaration(statement)
+      || ts.isInterfaceDeclaration(statement)
+      || ts.isTypeAliasDeclaration(statement)
+      || ts.isEnumDeclaration(statement);
+    const containsChange = [...changed].some((line) => line >= start && line <= end);
+    if (!required && !containsChange) continue;
+    for (let line = start; line <= end; line++) included.add(line);
+  }
+
+  for (const line of changed) {
+    if (statementRanges.some((range) => line >= range.start && line <= range.end)) continue;
+    for (let current = 1; current <= sourceFile.getLineAndCharacterOfPosition(sourceFile.end).line + 1; current++) included.add(current);
+    break;
+  }
+  return included;
+}
+
+function formatPrompt(diff: string, files: { path: string; content: string }[], summary: string | undefined, window: boolean): string {
+  const lineNumbers = parseDiffLineNumbers(diff);
+  const formatted = files.map((file) => {
+    const added = lineNumbers.added.get(file.path) ?? lineNumbers.added.get("");
+    const removed = lineNumbers.removed.get(file.path);
+    const included = window && /\.tsx?$/.test(file.path) ? declarationWindowLines(file, added, removed) : undefined;
+    return numberedFile(file, added, removed, included);
+  }).join("\n\n");
+  const summaryBlock = summary === undefined ? "" : `<change_summary>\n${summary}\n</change_summary>\n\n`;
   return USER_TEMPLATE.replace("{{SUMMARY_BLOCK}}", () => summaryBlock).replace("{{FILES}}", () => formatted);
+}
+
+export function buildDeclarationWindowPrompt(diff: string, files: { path: string; content: string }[], summary?: string): string {
+  return formatPrompt(diff, files, summary, true);
+}
+
+export function buildUserPrompt(diff: string, files: { path: string; content: string }[], summary?: string): string {
+  return formatPrompt(diff, files, summary, false);
 }
 
 function sha256(str: string): string {

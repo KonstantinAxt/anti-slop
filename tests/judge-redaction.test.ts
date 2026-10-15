@@ -96,4 +96,26 @@ describe("LLM Judge Secret Redaction", () => {
     expect(receivedUserPrompt).not.toContain(secret);
     expect(result.provenance.redactions).toBe(1);
   });
+
+  it("redacts secrets in the partial TypeScript view", async () => {
+    let receivedUserPrompt = "";
+    const secret = "ghp_0123456789abcdef0123456789abcdef0123";
+    const content = `export function changed() {\n  const token = \"${secret}\";\n  return 1;\n}\n${Array.from({ length: 1000 }, (_, index) => `const value${index} = ${index};`).join("\n")}`;
+    const diff = ["diff --git a/src/auth.ts b/src/auth.ts", "--- a/src/auth.ts", "+++ b/src/auth.ts", "@@ -3 +3 @@", "-  return 0;", "+  return 1;"].join("\n");
+    const provider = {
+      name: "inspecting-provider",
+      model: "test-model",
+      endpoint: "test://mock",
+      async complete(req: { user: string }): Promise<{ text: string }> {
+        receivedUserPrompt = req.user;
+        return { text: JSON.stringify({ verdict: "ALLOW", findings: [] }) };
+      },
+    };
+
+    const result = await reviewWithJudge({ diff, files: [{ path: "src/auth.ts", content }] }, { provider, inputTokenCeiling: 300 });
+
+    expect(result.disposition).toBe("ALLOW");
+    expect(receivedUserPrompt).not.toContain(secret);
+    expect(receivedUserPrompt).toContain("[REDACTED]");
+  });
 });

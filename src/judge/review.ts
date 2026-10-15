@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDiffLineNumbers } from "../git.js";
 import {
+  buildDeclarationWindowPrompt,
   buildUserPrompt,
   JUDGE_SCHEMA_VERSION,
   SCHEMA_SHA256,
@@ -59,9 +60,15 @@ export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): P
 
   const redactedInput = redactJudgeInput(input);
   const reviewFiles = input.files.filter((file) => !isDroppedJudgeFilePath(file.path));
-  const rawUserPrompt = buildUserPrompt(input.diff, reviewFiles, input.summary);
-  const redactedPrompt = redactJudgeInput({ diff: rawUserPrompt, files: [] });
-  const userPrompt = redactedPrompt.diff;
+  const rawFullPrompt = buildUserPrompt(input.diff, reviewFiles, input.summary);
+  let redactedPrompt = redactJudgeInput({ diff: rawFullPrompt, files: [] });
+  let userPrompt = redactedPrompt.diff;
+
+  if (Math.ceil(userPrompt.length / CHARS_PER_TOKEN) > inputTokenCeiling) {
+    const rawWindowedPrompt = buildDeclarationWindowPrompt(input.diff, reviewFiles, input.summary);
+    redactedPrompt = redactJudgeInput({ diff: rawWindowedPrompt, files: [] });
+    userPrompt = redactedPrompt.diff;
+  }
 
   const base = {
     provider: opts.provider.name,
@@ -79,9 +86,7 @@ export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): P
     droppedFindings: 0,
   };
 
-  const estimatedTokens = Math.ceil(userPrompt.length / CHARS_PER_TOKEN);
-
-  if (estimatedTokens > inputTokenCeiling) {
+  if (Math.ceil(userPrompt.length / CHARS_PER_TOKEN) > inputTokenCeiling) {
     const latencyMs = Math.round(performance.now() - startTime);
 
     return { disposition: "ABSTAIN", abstainReason: "TOKEN_CEILING", findings: [], provenance: { ...base, latencyMs } };
