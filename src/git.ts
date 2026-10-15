@@ -78,7 +78,7 @@ export function parseAddedLineNumbers(diff: string): Map<string, Set<number>> {
       continue;
     }
     if (hunkLines === undefined) {
-      if (line.startsWith("+++ b/")) file = line.slice("+++ b/".length);
+      if (line.startsWith("+++ b/")) file = line.slice("+++ b/".length).replace(/\t$/, "");
       continue;
     }
     if (line.startsWith("+")) hunkLines.add(newLine++);

@@ -112,6 +112,10 @@ describe("Git Diff Helpers (src/git.ts)", () => {
     expect(parseAddedLineNumbers("+++ a/other.ts\n@@ -1 +1 @@\n+added")).toEqual(new Map([["", new Set([1])]]));
   });
 
+  it("drops the tab git appends after a path with a space", () => {
+    expect(parseAddedLineNumbers("+++ b/my file.ts\t\n@@ -1 +1 @@\n+added")).toEqual(new Map([["my file.ts", new Set([1])]]));
+  });
+
   it("ignores additions before the first hunk", () => {
     expect(parseAddedLineNumbers("diff --git a/u.ts b/u.ts\n+++ b/u.ts\n+header text")).toEqual(new Map());
   });
