@@ -56,36 +56,64 @@ export function getChangedLineRangesSince(cwd: string, ref: string): Map<string,
   return parseChangedLineRanges(cwd, diff);
 }
 
-const HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
+const HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@\s*$/;
 
-export function parseAddedLineNumbers(diff: string): Map<string, Set<number>> {
+export interface DiffLineNumbers {
+  added: Map<string, Set<number>>;
+  removed: Map<string, Map<number, string[]>>;
+}
+
+export function parseDiffLineNumbers(diff: string): DiffLineNumbers {
   const addedByFile = new Map<string, Set<number>>();
+  const removedByFile = new Map<string, Map<number, string[]>>();
   let file = "";
+  let oldFile = "";
   let hunkLines: Set<number> | undefined;
   let newLine = 0;
+  let newLineCount = 1;
 
   for (const line of diff.split("\n")) {
     if (line.startsWith("diff --git ")) {
       file = "";
+      oldFile = "";
       hunkLines = undefined;
       continue;
     }
+    if (hunkLines === undefined) {
+      if (line.startsWith("--- a/")) oldFile = line.slice("--- a/".length).replace(/\t$/, "");
+      else if (line.startsWith("+++ b/")) file = line.slice("+++ b/".length).replace(/\t$/, "");
+      else if (line === "+++ /dev/null") file = oldFile;
+    }
+
     const hunk = HUNK_HEADER.exec(line);
+    if (hunkLines === undefined && hunk === null) continue;
     if (hunk) {
       newLine = Number(hunk[1]);
+      newLineCount = Number(hunk[2] ?? 1);
       hunkLines = addedByFile.get(file) ?? new Set<number>();
       addedByFile.set(file, hunkLines);
       continue;
     }
-    if (hunkLines === undefined) {
-      if (line.startsWith("+++ b/")) file = line.slice("+++ b/".length).replace(/\t$/, "");
-      continue;
+    if (hunkLines === undefined) continue;
+    if (line.startsWith("+")) {
+      hunkLines.add(newLine++);
+    } else if (line.startsWith("-")) {
+      const position = Math.max(1, newLine + Number(newLineCount === 0));
+      const removedAtFile = removedByFile.get(file) ?? new Map<number, string[]>();
+      const removedAtPosition = removedAtFile.get(position) ?? [];
+      removedAtPosition.push(line.slice(1));
+      removedAtFile.set(position, removedAtPosition);
+      removedByFile.set(file, removedAtFile);
+    } else if (line.startsWith(" ")) {
+      newLine++;
     }
-    if (line.startsWith("+")) hunkLines.add(newLine++);
-    else if (line.startsWith(" ")) newLine++;
   }
 
-  return addedByFile;
+  return { added: addedByFile, removed: removedByFile };
+}
+
+export function parseAddedLineNumbers(diff: string): Map<string, Set<number>> {
+  return parseDiffLineNumbers(diff).added;
 }
 
 // With --unified=0 every hunk header "+start,count" is exactly the added line range; count 0 means deletion only.

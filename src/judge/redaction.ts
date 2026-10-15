@@ -16,7 +16,7 @@ const DROPPED_EXTENSIONS: Record<string, true> = {
 
 const SSH_KEY_PREFIXES = ["id_rsa", "id_dsa", "id_ed25519", "id_ecdsa"] as const;
 
-function isDroppedFilePath(filePath: string): boolean {
+export function isDroppedJudgeFilePath(filePath: string): boolean {
   const baseName = path.basename(filePath);
 
   if (baseName.startsWith(".env")) {
@@ -83,6 +83,11 @@ function maskPattern(
   });
 
   return { text: result, count };
+}
+
+export function redactJudgeText(input: string): { text: string; redactions: number } {
+  const result = maskSecretsInText(input);
+  return { text: result.text, redactions: result.count };
 }
 
 function maskSecretsInText(input: string): MaskResult {
@@ -171,7 +176,7 @@ export function redactJudgeInput(input: {
   let totalRedactions = 0;
 
   for (const file of input.files) {
-    if (isDroppedFilePath(file.path)) {
+    if (isDroppedJudgeFilePath(file.path)) {
       droppedFiles.push(file.path);
     } else {
       const maskedContent = maskSecretsInText(file.content);

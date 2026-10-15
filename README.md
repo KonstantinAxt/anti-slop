@@ -485,7 +485,7 @@ The caller provides the base URL, API key and model name. Only the CLI reads the
 Before transmitting prompts to the remote provider:
 - **Sensitive Files Dropped**: Files matching `.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, and SSH keys (`id_rsa*`) are completely dropped.
 - **Secret Redaction**: Common secret token formats (AWS keys, GitHub tokens, API keys starting with `sk-`, JWTs, Bearer headers, PEM blocks) and high-entropy string assignments to variables containing key, secret, token, or password are masked with `[REDACTED]`.
-- **Blinded Evaluation:** Only the redacted change summary and numbered file views are sent. Deterministic findings, labels, and rule results are never included in the prompt.
+- **Blinded Evaluation**: Only the redacted change summary and numbered file views are sent. Deterministic findings, labels, and rule results are never included in the prompt.
 
 #### Abstain Reasons
 

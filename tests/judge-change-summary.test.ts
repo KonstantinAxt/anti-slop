@@ -280,7 +280,32 @@ describe("judge change summary", () => {
 
     expect(buildUserPrompt(diff, [{ path: "u.ts", content: "unchanged" }])).toContain("\t1   | unchanged\n\t  - | removed");
   });
-  it("numbers the new file, marks added lines, and omits deleted lines from the separate diff", () => {
+  it("keeps removed lines with their deleted file path", () => {
+    const diff = [
+      "diff --git a/deleted.ts b/deleted.ts",
+      "--- a/deleted.ts",
+      "+++ /dev/null",
+      "@@ -1,2 +0,0 @@",
+      "-export const removedOne = 1;",
+      "-export const removedTwo = 2;",
+      "diff --git a/u.ts b/u.ts",
+      "--- a/u.ts",
+      "+++ b/u.ts",
+      "@@ -1 +1,2 @@",
+      " unchanged",
+      "+added",
+    ].join("\n");
+
+    const prompt = buildUserPrompt(diff, [{ path: "u.ts", content: "unchanged\nadded" }, { path: "caller.ts", content: "context" }]);
+
+    expect(prompt).toContain('<file path="u.ts">');
+    expect(prompt).toContain("\t1   | unchanged");
+    expect(prompt).not.toContain("removedOne");
+    expect(prompt).not.toContain("removedTwo");
+    expect(prompt).toContain('<file path="caller.ts">');
+  });
+
+  it("numbers the new file, marks added lines, and includes removed lines without new-file numbers", () => {
     const diff = [
       "diff --git a/src/u.ts b/src/u.ts",
       "--- a/src/u.ts",

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { parseAddedLineNumbers } from "../git.js";
+import { parseDiffLineNumbers } from "../git.js";
 
 export const JUDGE_SCHEMA_VERSION = "2026-10-01";
 
@@ -54,47 +54,6 @@ const USER_TEMPLATE = `{{SUMMARY_BLOCK}}Please review the numbered file below. T
 
 {{FILES}}`;
 
-const HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
-
-function parseRemovedLines(diff: string): Map<string, Map<number, string[]>> {
-  const removedByFile = new Map<string, Map<number, string[]>>();
-  let file = "";
-  let newLine = 0;
-  let newLineCount = 1;
-  let inHunk = false;
-
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("diff --git ")) {
-      file = "";
-      inHunk = false;
-      continue;
-    }
-    const hunk = HUNK_HEADER.exec(line);
-    if (hunk) {
-      newLine = Number(hunk[1]);
-      newLineCount = Number(hunk[2] ?? 1);
-      inHunk = true;
-      continue;
-    }
-    if (!inHunk) {
-      if (line.startsWith("+++ b/")) file = line.slice("+++ b/".length);
-      continue;
-    }
-    if (line.startsWith("-")) {
-      const position = Math.max(1, newLine + Number(newLineCount === 0));
-      const removedByPosition = removedByFile.get(file) ?? new Map<number, string[]>();
-      const removedAtPosition = removedByPosition.get(position) ?? [];
-      removedAtPosition.push(line.slice(1));
-      removedByPosition.set(position, removedAtPosition);
-      removedByFile.set(file, removedByPosition);
-    } else if (line.startsWith("+") || line.startsWith(" ")) {
-      newLine++;
-    }
-  }
-
-  return removedByFile;
-}
-
 function numberedFile(file: { path: string; content: string }, addedLines: Set<number> | undefined, removedLines: Map<number, string[]> | undefined): string {
   const lines = file.content === "" ? [] : file.content.split("\n");
   if (lines.at(-1) === "") lines.pop();
@@ -123,6 +82,14 @@ function numberedFile(file: { path: string; content: string }, addedLines: Set<n
   return numbered.join("\n");
 }
 
+export function buildUserPrompt(diff: string, files: { path: string; content: string }[], summary?: string): string {
+  const lineNumbers = parseDiffLineNumbers(diff);
+  const formatted = files.map((file) => numberedFile(file, lineNumbers.added.get(file.path) ?? lineNumbers.added.get(""), lineNumbers.removed.get(file.path))).join("\n\n");
+  const summaryBlock = summary === undefined ? "" : `<change_summary>\n${summary}\n</change_summary>\n\n`;
+
+  return USER_TEMPLATE.replace("{{SUMMARY_BLOCK}}", () => summaryBlock).replace("{{FILES}}", () => formatted);
+}
+
 function sha256(str: string): string {
   return createHash("sha256").update(str, "utf8").digest("hex");
 }
@@ -130,12 +97,3 @@ function sha256(str: string): string {
 export const SYSTEM_PROMPT_SHA256 = sha256(SYSTEM_PROMPT);
 export const USER_TEMPLATE_SHA256 = sha256(USER_TEMPLATE);
 export const SCHEMA_SHA256 = sha256(JSON.stringify(JUDGE_SCHEMA));
-
-export function buildUserPrompt(diff: string, files: { path: string; content: string }[], summary?: string): string {
-  const addedLines = parseAddedLineNumbers(diff);
-  const removedLines = parseRemovedLines(diff);
-  const formatted = files.map((file) => numberedFile(file, addedLines.get(file.path) ?? addedLines.get(""), removedLines.get(file.path) ?? removedLines.get(""))).join("\n\n");
-
-  const summaryBlock = summary === undefined ? "" : `<change_summary>\n${summary}\n</change_summary>\n\n`;
-  return USER_TEMPLATE.replace("{{SUMMARY_BLOCK}}", () => summaryBlock).replace("{{FILES}}", () => formatted);
-}

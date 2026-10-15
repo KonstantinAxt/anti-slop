@@ -1,4 +1,4 @@
-import { getChangedLineRangesSince, getDiffFilesSince, getStagedFiles, getTrackedCodeFiles, parseAddedLineNumbers } from "../src/git.js";
+import { getChangedLineRangesSince, getDiffFilesSince, getStagedFiles, getTrackedCodeFiles, parseAddedLineNumbers, parseDiffLineNumbers } from "../src/git.js";
 import { describe, it, expect, vi } from "vitest";
 import { execFileSync, execSync } from "node:child_process";
 import * as path from "node:path";
@@ -130,6 +130,12 @@ describe("Git Diff Helpers (src/git.ts)", () => {
     const diff = ["diff --git a/u.ts b/u.ts", "new file mode 100644", "--- /dev/null", "+++ b/u.ts", "@@ -0,0 +1,2 @@", "+first", "+second"].join("\n");
 
     expect(parseAddedLineNumbers(diff)).toEqual(new Map([["u.ts", new Set([1, 2])]]));
+  });
+
+  it("keys removed lines by the old path when a file is deleted", () => {
+    const diff = ["diff --git a/deleted.ts b/deleted.ts", "--- a/deleted.ts", "+++ /dev/null", "@@ -1,2 +0,0 @@", "-first", "-second"].join("\n");
+
+    expect(parseDiffLineNumbers(diff).removed).toEqual(new Map([["deleted.ts", new Map([[1, ["first", "second"]]])]]));
   });
 
   it("parses added and changed lines from multiple diff hunks and omits deletions", () => {
