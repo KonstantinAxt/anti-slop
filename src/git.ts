@@ -56,7 +56,7 @@ export function getChangedLineRangesSince(cwd: string, ref: string): Map<string,
   return parseChangedLineRanges(cwd, diff);
 }
 
-const HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@\s*$/;
+const HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
 
 export interface DiffLineNumbers {
   added: Map<string, Set<number>>;

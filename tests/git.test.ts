@@ -89,6 +89,11 @@ describe("Git Diff Helpers (src/git.ts)", () => {
 
     expect(parseAddedLineNumbers(diff)).toEqual(new Map([["u.ts", new Set([3])]]));
   });
+  it("parses hunk headers with function context", () => {
+    const diff = ["diff --git a/u.ts b/u.ts", "--- a/u.ts", "+++ b/u.ts", "@@ -1,3 +1,4 @@ function foo() {", " unchanged", "+added", " context"].join("\n");
+
+    expect(parseAddedLineNumbers(diff)).toEqual(new Map([["u.ts", new Set([2])]]));
+  });
 
   it("returns an empty set for a deletion-only hunk", () => {
     const diff = ["diff --git a/u.ts b/u.ts", "--- a/u.ts", "+++ b/u.ts", "@@ -3 +2,0 @@", "-removed"].join("\n");

@@ -93,7 +93,25 @@ describe("LLM review", () => {
     expect(prompts[0]).toContain("\t3 + |   if (!u) return 'none';");
     expect(prompts[0]).not.toContain("// staged but uncommitted");
   });
+  it("keeps added-line findings when the diff hunk has function context", async () => {
+    const targets = createRepo();
+    const prompts: string[] = [];
+    const provider: JudgeProvider = {
+      name: "capture",
+      model: TEST_MODEL,
+      endpoint: "capture://test",
+      async complete(request: JudgeCompletionRequest): Promise<{ text: string }> {
+        prompts.push(request.user);
+        return { text: FLAG_RESPONSE };
+      },
+    };
 
+    const review = await runLlmReview(repoDir, SINCE_SOURCE, [targets[2] ?? ""], provider);
+
+    expect(prompts[0]).toContain("\t3 + |   if (!u) return 'none';");
+    expect(review.findings).toHaveLength(1);
+
+  });
   it("uses staged content when the working tree has further unstaged edits", async () => {
     const targets = createRepo();
     const stagedContent = `${AFTER}// staged line\n`;
