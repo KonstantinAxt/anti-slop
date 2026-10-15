@@ -6,11 +6,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createStaticProvider, runAntiSlop } from "../src/index.js";
 import { LLM_REVIEW_CHECK, runLlmReview, withLlmReview } from "../src/judge/gate.js";
 import { JudgeProviderError } from "../src/judge/provider.js";
+import type { JudgeCompletionRequest, JudgeProvider, ReviewSource } from "../src/judge/types.js";
 
 const TEST_MODEL = "test-judge-model";
 const CHANGED_FILE = "src/u.ts";
 const SECOND_CHANGED_FILE = "src/v.ts";
-const RANGE = ["HEAD~1...HEAD"];
 const FLAGGED_LINE = 3;
 const BASE_SCAN_TIMEOUT_MS = 30000;
 const CLI_PATH = path.resolve(import.meta.dirname, "../bin/anti-slop");
@@ -30,7 +30,23 @@ function git(...args: string[]): void {
   execFileSync("git", args, { cwd: repoDir, stdio: "ignore" });
 }
 
-// Two commits, so RANGE covers two changed code files, one changed non-code file and one unchanged code file.
+function captureProvider(prompts: string[]): JudgeProvider {
+  return {
+    name: "capture",
+    model: TEST_MODEL,
+    endpoint: "capture://test",
+    async complete(request: JudgeCompletionRequest): Promise<{ text: string }> {
+      prompts.push(request.user);
+
+      return { text: JSON.stringify({ verdict: "ALLOW", findings: [] }) };
+    },
+  };
+}
+
+const SINCE_SOURCE: ReviewSource = { kind: "since", ref: "HEAD~1" };
+const STAGED_SOURCE: ReviewSource = { kind: "staged" };
+
+// Two commits change two code files and one non-code file while leaving one code file unchanged.
 function createRepo(): string[] {
   repoDir = fs.mkdtempSync(path.join(os.tmpdir(), "anti-slop-llm-review-"));
   fs.mkdirSync(path.join(repoDir, "src"));
@@ -56,13 +72,61 @@ describe("LLM review", () => {
   it("reviews only changed code files and reports a FLAG finding as an advisory warning at the flagged line", async () => {
     const targets = createRepo();
 
-    const review = await runLlmReview(repoDir, RANGE, targets, createStaticProvider([FLAG_RESPONSE], TEST_MODEL));
+    const review = await runLlmReview(repoDir, SINCE_SOURCE, targets, createStaticProvider([FLAG_RESPONSE], TEST_MODEL));
 
     expect(review.findings).toEqual([
       { check: LLM_REVIEW_CHECK, rule: "unnecessary-under-invariant", severity: "warning", message: "Redundant null check: User is non-null.", file: CHANGED_FILE, line: FLAGGED_LINE, column: 1, suggestion: undefined },
     ]);
-
     expect(review.check).toEqual({ check: LLM_REVIEW_CHECK, status: "completed", findingsCount: 1, reason: `Reviewed 1 files with ${TEST_MODEL}: 1 findings, 0 abstained` });
+  });
+
+  it("uses committed content for a since diff when the index differs from HEAD", async () => {
+    const targets = createRepo();
+    fs.writeFileSync(path.join(repoDir, CHANGED_FILE), `// staged but uncommitted\n${AFTER}`);
+    git("add", CHANGED_FILE);
+    const prompts: string[] = [];
+
+    await runLlmReview(repoDir, SINCE_SOURCE, [targets[2] ?? ""], captureProvider(prompts));
+
+    expect(prompts[0]).toContain(`--- File: ${CHANGED_FILE} ---\n${AFTER}`);
+    expect(prompts[0]).not.toContain("// staged but uncommitted");
+  });
+
+  it("uses staged content when the working tree has further unstaged edits", async () => {
+    const targets = createRepo();
+    const stagedContent = `${AFTER}// staged line\n`;
+    fs.writeFileSync(path.join(repoDir, CHANGED_FILE), stagedContent);
+    git("add", CHANGED_FILE);
+    fs.writeFileSync(path.join(repoDir, CHANGED_FILE), `// unstaged line\n${stagedContent}`);
+    const prompts: string[] = [];
+
+    await runLlmReview(repoDir, STAGED_SOURCE, [targets[2] ?? ""], captureProvider(prompts));
+
+    expect(prompts[0]).toContain(`--- File: ${CHANGED_FILE} ---\n${stagedContent}`);
+    expect(prompts[0]).not.toContain("// unstaged line");
+  });
+
+  it("skips files deleted from the new side of a staged diff", async () => {
+    const targets = createRepo();
+    git("rm", "-f", CHANGED_FILE);
+    const prompts: string[] = [];
+
+    const review = await runLlmReview(repoDir, STAGED_SOURCE, [targets[2] ?? ""], captureProvider(prompts));
+
+    expect(prompts).toHaveLength(0);
+    expect(review.check.reason).toBe(`Reviewed 0 files with ${TEST_MODEL}: 0 findings, 0 abstained`);
+  });
+
+  it("reviews committed changes larger than git's default output buffer", async () => {
+    const targets = createRepo();
+    const largeContent = `${("// " + "x".repeat(76) + "\n").repeat(14_000)}export const changed = true;\n`;
+    fs.writeFileSync(path.join(repoDir, CHANGED_FILE), largeContent);
+    git("add", CHANGED_FILE);
+    git("commit", "-qm", "large change");
+
+    const review = await runLlmReview(repoDir, SINCE_SOURCE, [targets[2] ?? ""], createStaticProvider([], TEST_MODEL));
+
+    expect(review.check.reason).toBe(`Reviewed 1 files with ${TEST_MODEL}: 0 findings, 1 abstained (TOKEN_CEILING 1)`);
   });
 
   it("counts provider timeouts and malformed output as abstentions, not a clean review", async () => {
@@ -70,7 +134,7 @@ describe("LLM review", () => {
     const targets = [CHANGED_FILE, SECOND_CHANGED_FILE].map((file) => path.join(repoDir, file));
     const timeout = new JudgeProviderError("Request timed out", "TIMEOUT");
 
-    const review = await runLlmReview(repoDir, RANGE, targets, createStaticProvider([timeout, "not json"], TEST_MODEL));
+    const review = await runLlmReview(repoDir, SINCE_SOURCE, targets, createStaticProvider([timeout, "not json"], TEST_MODEL));
 
     expect(review.check.reason).toBe(`Reviewed 2 files with ${TEST_MODEL}: 0 findings, 2 abstained (TIMEOUT 1, MALFORMED_OUTPUT 1)`);
   });
@@ -78,7 +142,7 @@ describe("LLM review", () => {
   it("keeps deterministic findings and the pass state when merging a review", async () => {
     const targets = createRepo();
     const scan = await runAntiSlop({ cwd: repoDir, since: "HEAD~1" });
-    const review = await runLlmReview(repoDir, RANGE, targets, createStaticProvider([FLAG_RESPONSE], TEST_MODEL));
+    const review = await runLlmReview(repoDir, SINCE_SOURCE, targets, createStaticProvider([FLAG_RESPONSE], TEST_MODEL));
 
     const merged = withLlmReview(scan, review);
 

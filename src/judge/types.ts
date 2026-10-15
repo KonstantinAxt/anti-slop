@@ -1,4 +1,5 @@
 export interface JudgeInput { diff: string; files: { path: string; content: string }[]; }
+export type ReviewSource = { kind: "since"; ref: string } | { kind: "staged" };
 
 export type JudgeReasoningEffort = "low" | "medium" | "high";
 

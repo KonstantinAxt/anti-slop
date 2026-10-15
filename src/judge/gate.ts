@@ -1,9 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import type { AntiSlopResult, CheckExecution, Finding } from "../types.js";
 import { reviewWithJudge } from "./review.js";
-import type { JudgeAbstainReason, JudgeFinding, JudgeProvider } from "./types.js";
+import type { JudgeAbstainReason, JudgeFinding, JudgeProvider, ReviewSource } from "./types.js";
 
 export const LLM_REVIEW_CHECK = "llm-review";
 
@@ -35,26 +34,46 @@ function describeAbstentions(abstentions: Map<JudgeAbstainReason, number>): stri
   return `${total} abstained (${parts.join(", ")})`;
 }
 
-// Reviews each code file in `targetFiles` whose `git diff <gitRange>` is non-empty, one request per file.
+type ReviewDiffSource = { args: string[]; contentPrefix: "HEAD:" | ":" };
+
+function resolveReviewDiffSource(source: ReviewSource): ReviewDiffSource {
+  switch (source.kind) {
+    case "since": return { args: [`${source.ref}...HEAD`], contentPrefix: "HEAD:" };
+    case "staged": return { args: ["--cached"], contentPrefix: ":" };
+  }
+}
+
+function readReviewFile(cwd: string, absolutePath: string, contentPrefix: ReviewDiffSource["contentPrefix"]): string {
+  const relativePath = path.relative(cwd, absolutePath);
+
+  return execFileSync("git", ["show", `${contentPrefix}./${relativePath}`], { cwd, encoding: "utf-8", maxBuffer: Infinity });
+}
+
+async function reviewChangedFile(cwd: string, absolutePath: string, diffSource: ReviewDiffSource, provider: JudgeProvider): Promise<{ findings: Finding[]; reviewed: boolean; abstainReason?: JudgeAbstainReason }> {
+  const relativePath = path.relative(cwd, absolutePath);
+  const diff = execFileSync("git", ["diff", ...diffSource.args, "--", relativePath], { cwd, encoding: "utf-8", maxBuffer: Infinity });
+  if (diff === "") return { findings: [], reviewed: false };
+  if (diff.split("\n").includes("+++ /dev/null")) return { findings: [], reviewed: false };
+  const content = readReviewFile(cwd, absolutePath, diffSource.contentPrefix);
+  const result = await reviewWithJudge({ diff, files: [{ path: relativePath, content }] }, { provider });
+
+  return { findings: result.findings.map(toFinding), reviewed: true, ...(result.abstainReason ? { abstainReason: result.abstainReason } : {}) };
+}
+
+// Reviews changed code files with content from the diff's new side, skipping files deleted there.
 // Abstentions are counted in the check reason, so a failed request never reads as a clean review.
-export async function runLlmReview(cwd: string, gitRange: string[], targetFiles: string[], provider: JudgeProvider): Promise<LlmReview> {
+export async function runLlmReview(cwd: string, source: ReviewSource, targetFiles: string[], provider: JudgeProvider): Promise<LlmReview> {
   const findings: Finding[] = [];
   const abstentions = new Map<JudgeAbstainReason, number>();
+  const diffSource = resolveReviewDiffSource(source);
   let reviewed = 0;
 
   for (const absolutePath of targetFiles) {
     if (!REVIEWABLE_EXTENSIONS[path.extname(absolutePath)]) continue;
-    const relativePath = path.relative(cwd, absolutePath);
-    const fileDiff = execFileSync("git", ["diff", ...gitRange, "--", relativePath], { cwd, encoding: "utf-8" });
-    if (fileDiff === "") continue;
-
-    reviewed++;
-    const content = readFileSync(absolutePath, "utf-8");
-    const result = await reviewWithJudge({ diff: fileDiff, files: [{ path: relativePath, content }] }, { provider });
-    if (result.abstainReason) {
-      abstentions.set(result.abstainReason, (abstentions.get(result.abstainReason) ?? 0) + 1);
-    }
-    findings.push(...result.findings.map(toFinding));
+    const result = await reviewChangedFile(cwd, absolutePath, diffSource, provider);
+    reviewed += Number(result.reviewed);
+    if (result.abstainReason) abstentions.set(result.abstainReason, (abstentions.get(result.abstainReason) ?? 0) + 1);
+    findings.push(...result.findings);
   }
 
   return {
