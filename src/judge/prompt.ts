@@ -32,6 +32,7 @@ const JUDGE_SCHEMA = {
 
 export const SYSTEM_PROMPT = `You are an expert code review semantic judge in the anti-slop review gate.
 Your task is to review added code changes for a single semantic defect category: "unnecessary_under_invariant".
+The change summary states intent; only the code is evidence for a finding.
 
 ## Evaluation Rubric: unnecessary_under_invariant
 Code that existing invariants make unnecessary (defensive checks, redundant guards, fast paths, null/undefined checks, copies, or fallbacks that types, call sites, or earlier guards rule out).
@@ -48,7 +49,15 @@ Respond with valid JSON:
 - If verdict is "FLAG", findings must NOT be empty. If verdict is "ALLOW" or "NEEDS_HUMAN_ATTENTION", findings MUST be empty [].
 - Output ONLY the JSON object, optionally wrapped in a single \`\`\`json fenced block.`;
 
-const USER_TEMPLATE = `Please review the following git diff and associated files.\n\n<git_diff>\n{{DIFF}}\n</git_diff>\n\n<files>\n{{FILES}}\n</files>`;
+const USER_TEMPLATE = `{{SUMMARY_BLOCK}}Please review the following git diff and associated files.
+
+<git_diff>
+{{DIFF}}
+</git_diff>
+
+<files>
+{{FILES}}
+</files>`;
 
 function sha256(str: string): string {
   return createHash("sha256").update(str, "utf8").digest("hex");
@@ -58,8 +67,12 @@ export const SYSTEM_PROMPT_SHA256 = sha256(SYSTEM_PROMPT);
 export const USER_TEMPLATE_SHA256 = sha256(USER_TEMPLATE);
 export const SCHEMA_SHA256 = sha256(JSON.stringify(JUDGE_SCHEMA));
 
-export function buildUserPrompt(diff: string, files: { path: string; content: string }[]): string {
+export function buildUserPrompt(diff: string, files: { path: string; content: string }[], summary?: string): string {
   const formatted = files.map((file) => `--- File: ${file.path} ---\n${file.content}`).join("\n\n");
+  const summaryBlock = summary === undefined ? "" : `<change_summary>\n${summary}\n</change_summary>\n\n`;
 
-  return USER_TEMPLATE.replace("{{DIFF}}", diff).replace("{{FILES}}", formatted);
+  return USER_TEMPLATE
+    .replace("{{SUMMARY_BLOCK}}", () => summaryBlock)
+    .replace("{{DIFF}}", () => diff)
+    .replace("{{FILES}}", () => formatted);
 }

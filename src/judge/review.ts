@@ -58,7 +58,7 @@ export async function reviewWithJudge(input: JudgeInput, opts: ReviewOptions): P
   const inputTokenCeiling = opts.inputTokenCeiling ?? DEFAULT_INPUT_TOKEN_CEILING;
 
   const redacted = redactJudgeInput(input);
-  const userPrompt = buildUserPrompt(redacted.diff, redacted.files);
+  const userPrompt = buildUserPrompt(redacted.diff, redacted.files, redacted.summary);
 
   const base = {
     provider: opts.provider.name,
