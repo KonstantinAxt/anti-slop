@@ -22,6 +22,8 @@ function toFinding(judged: JudgeFinding): Finding {
     file: judged.file,
     line: judged.line_range.start,
     column: 1,
+    confidence: judged.confidence,
+    endLine: judged.line_range.end,
     suggestion: judged.suggested_fix,
   };
 }

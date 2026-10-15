@@ -50,6 +50,44 @@ describe("Output Formatters", () => {
 
     expect(mdOutput).toBe(expected);
   });
+  it("formats judge confidence and multi-line locations", () => {
+    const judgeResult: AntiSlopResult = {
+      targetDir: "/test/project",
+      totalFilesChecked: 1,
+      passed: true,
+      durationMs: 1,
+      findings: [
+        {
+          check: "llm-review",
+          rule: "unnecessary-under-invariant",
+          severity: "warning",
+          message: "Redundant check under User invariant.",
+          file: "src/user.ts",
+          line: 2,
+          column: 1,
+          endLine: 4,
+          confidence: 0.82,
+        },
+        {
+          check: "llm-review",
+          rule: "unnecessary-under-invariant",
+          severity: "warning",
+          message: "Redundant check under User invariant.",
+          file: "src/user.ts",
+          line: 3,
+          column: 1,
+          endLine: 3,
+          confidence: 0,
+        },
+      ],
+    };
+
+    const output = formatOutput(judgeResult, "llm");
+    expect(output).toContain("- **Location:** `src/user.ts:2-4:1`");
+    expect(output).toContain("- **Confidence:** 0.82");
+    expect(output).toContain("- **Location:** `src/user.ts:3:1`");
+    expect(output.split("\n")).toContain("- **Confidence:** 0");
+  });
   it("formats clean Terminal output by default and explicitly", () => {
     const defaultOutput = formatOutput(sampleResult);
     const termOutput = formatOutput(sampleResult, "terminal");

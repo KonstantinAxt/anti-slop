@@ -11,6 +11,8 @@ export interface Finding {
   excerpt?: string | undefined;
   suggestion?: string | undefined;
   why?: string | undefined;
+  confidence?: number | undefined;
+  endLine?: number | undefined;
 }
 
 export interface CrapEntry {
