@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createStaticProvider, reviewWithJudge } from "../src/index.js";
+import type { JudgeProvider } from "../src/judge/types.js";
 
 const TEST_CEILING = 5;
 
@@ -24,6 +25,26 @@ const WINDOWED_DIFF = [
   "-  return value;",
   "+  if (!value) return \"fallback\";",
 ].join("\n");
+function captureWindowProvider(prompts: string[], line: number): JudgeProvider {
+  return {
+    name: "capture",
+    model: "capture",
+    endpoint: "capture://",
+    async complete(request) {
+      prompts.push(request.user);
+      return { text: JSON.stringify({ verdict: "FLAG", findings: [{ file: "src/f.ts", line_range: { start: line, end: line }, problem_category: "unnecessary_under_invariant", reason: "The string parameter is non-null by its type.", confidence: 0.9 }] }) };
+    },
+  };
+}
+
+function oversizedPrefix(count: number): string[] {
+  return [
+    "import { read } from \"./read.js\";",
+    "interface Entry { name: string; }",
+    "type EntryId = string;",
+    ...Array.from({ length: count }, (_, index) => `const unrelated${index} = ${index};`),
+  ];
+}
 describe("LLM Judge Evidence Checks and Token Ceiling", () => {
   it("unknown file in findings -> ABSTAIN MALFORMED_OUTPUT", async () => {
     // Synthetic fixture: finding targeting file not among sent files
@@ -178,6 +199,43 @@ describe("LLM Judge Evidence Checks and Token Ceiling", () => {
 
     expect(result.abstainReason).toBe("TOKEN_CEILING");
     expect(called).toBe(false);
+  });
+
+  it("includes a new function after an added blank separator", async () => {
+    const prompts: string[] = [];
+    const content = [...oversizedPrefix(60), "", "export function added(value: string): string {", "  const copy = value;", "  if (!value) return \"fallback\";", "  return copy;", "}"].join("\n");
+    const diff = ["diff --git a/src/f.ts b/src/f.ts", "--- a/src/f.ts", "+++ b/src/f.ts", "@@ -63,0 +64,6 @@", "+", "+export function added(value: string): string {", "+  const copy = value;", "+  if (!value) return \"fallback\";", "+  return copy;", "+}"].join("\n");
+
+    const result = await reviewWithJudge({ diff, files: [{ path: "src/f.ts", content }] }, { provider: captureWindowProvider(prompts, 67), inputTokenCeiling: 200 });
+
+    expect(result.findings.map((finding) => finding.line_range.start)).toEqual([67]);
+    expect(prompts[0]).toContain("\t64 + | ");
+    expect(prompts[0]).toContain("\t65 + | export function added(value: string): string {");
+    expect(prompts[0]).not.toContain("const unrelated0 = 0;");
+  });
+
+  it("includes JSDoc changed with its function body", async () => {
+    const prompts: string[] = [];
+    const content = [...oversizedPrefix(60), "/** @param value remains valid */", "export function changed(value: string): string {", "  const copy = value;", "  if (!value) return \"fallback\";", "  return copy;", "}", ...Array.from({ length: 60 }, (_, index) => `const after${index} = ${index};`)].join("\n");
+    const diff = [
+      "diff --git a/src/f.ts b/src/f.ts",
+      "--- a/src/f.ts",
+      "+++ b/src/f.ts",
+      "@@ -64 +64 @@",
+      "-/** @param value was valid */",
+      "+/** @param value remains valid */",
+      "@@ -67 +67,2 @@",
+      "-  return copy;",
+      "+  if (!value) return \"fallback\";",
+      "+  return copy;",
+    ].join("\n");
+
+    const result = await reviewWithJudge({ diff, files: [{ path: "src/f.ts", content }] }, { provider: captureWindowProvider(prompts, 67), inputTokenCeiling: 200 });
+
+    expect(result.findings.map((finding) => finding.line_range.start)).toEqual([67]);
+    expect(prompts[0]).toContain("\t    - | /** @param value was valid */\n\t 64 + | /** @param value remains valid */");
+    expect(prompts[0]).toContain("\t 65   | export function changed(value: string): string {");
+    expect(prompts[0]).not.toContain("const after0 = 0;");
   });
 });
 

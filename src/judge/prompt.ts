@@ -100,40 +100,33 @@ function declarationWindowLines(file: { path: string; content: string }, addedLi
   const included = new Set<number>();
   const changed = new Set(addedLines ?? []);
   for (const line of removedLines?.keys() ?? []) changed.add(line);
-  let outsideDeclaration = false;
+  const statementRanges = sourceFile.statements.map((statement, index) => {
+    const start = sourceFile.getLineAndCharacterOfPosition(statement.getStart(sourceFile)).line + 1;
+    const end = sourceFile.getLineAndCharacterOfPosition(statement.getEnd()).line + 1;
+    const previousEnd = index === 0 ? 0 : sourceFile.getLineAndCharacterOfPosition(sourceFile.statements[index - 1]?.getEnd() ?? 0).line + 1;
+    const leadingComments = ts.getLeadingCommentRanges(file.content, statement.getFullStart()) ?? [];
+    const commentStart = leadingComments.length === 0 ? start : sourceFile.getLineAndCharacterOfPosition(leadingComments[0]?.pos ?? 0).line + 1;
+    const leadingStart = Math.min(start, commentStart);
+    const leadingStartWithBlank = leadingStart > previousEnd + 1 ? previousEnd + 1 : leadingStart;
+    return { statement, start: leadingStartWithBlank, end };
+  });
 
-  for (const statement of sourceFile.statements) {
+  for (const { statement, start, end } of statementRanges) {
     const required = ts.isImportDeclaration(statement)
       || ts.isImportEqualsDeclaration(statement)
       || ts.isExportDeclaration(statement)
       || ts.isInterfaceDeclaration(statement)
       || ts.isTypeAliasDeclaration(statement)
       || ts.isEnumDeclaration(statement);
-    const start = sourceFile.getLineAndCharacterOfPosition(statement.getStart(sourceFile)).line + 1;
-    const end = sourceFile.getLineAndCharacterOfPosition(statement.getEnd()).line + 1;
-    let containsChange = false;
-    for (const line of changed) {
-      if (line < start || line > end) continue;
-      containsChange = true;
-      break;
-    }
-    if (required || containsChange) {
-      for (let line = start; line <= end; line++) included.add(line);
-    }
+    const containsChange = [...changed].some((line) => line >= start && line <= end);
+    if (!required && !containsChange) continue;
+    for (let line = start; line <= end; line++) included.add(line);
   }
 
   for (const line of changed) {
-    const inDeclaration = sourceFile.statements.some((statement) => {
-      const start = sourceFile.getLineAndCharacterOfPosition(statement.getStart(sourceFile)).line + 1;
-      const end = sourceFile.getLineAndCharacterOfPosition(statement.getEnd()).line + 1;
-      return line >= start && line <= end;
-    });
-    if (inDeclaration) continue;
-    outsideDeclaration = true;
+    if (statementRanges.some((range) => line >= range.start && line <= range.end)) continue;
+    for (let current = 1; current <= sourceFile.getLineAndCharacterOfPosition(sourceFile.end).line + 1; current++) included.add(current);
     break;
-  }
-  if (outsideDeclaration) {
-    for (let line = 1; line <= sourceFile.getLineAndCharacterOfPosition(sourceFile.end).line + 1; line++) included.add(line);
   }
   return included;
 }
@@ -141,8 +134,8 @@ function declarationWindowLines(file: { path: string; content: string }, addedLi
 function formatPrompt(diff: string, files: { path: string; content: string }[], summary: string | undefined, window: boolean): string {
   const lineNumbers = parseDiffLineNumbers(diff);
   const formatted = files.map((file) => {
-    const added = lineNumbers.added.get(file.path) ?? lineNumbers.added.get(file.path.replace(/^src\//, "")) ?? lineNumbers.added.get("");
-    const removed = lineNumbers.removed.get(file.path) ?? lineNumbers.removed.get(file.path.replace(/^src\//, ""));
+    const added = lineNumbers.added.get(file.path) ?? lineNumbers.added.get("");
+    const removed = lineNumbers.removed.get(file.path);
     const included = window && /\.tsx?$/.test(file.path) ? declarationWindowLines(file, added, removed) : undefined;
     return numberedFile(file, added, removed, included);
   }).join("\n\n");
