@@ -1,4 +1,4 @@
-import { getChangedLineRangesSince, getDiffFilesSince, getStagedFiles, getTrackedCodeFiles } from "../src/git.js";
+import { getChangedLineRangesSince, getDiffFilesSince, getStagedFiles, getTrackedCodeFiles, parseAddedLineNumbers } from "../src/git.js";
 import { describe, it, expect, vi } from "vitest";
 import { execFileSync, execSync } from "node:child_process";
 import * as path from "node:path";
@@ -69,6 +69,67 @@ describe("Git Diff Helpers (src/git.ts)", () => {
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
     });
+  });
+
+  it("parses a headerless hunk", () => {
+    expect(parseAddedLineNumbers("@@ -3 +3 @@\n+added")).toEqual(new Map([["", new Set([3])]]));
+  });
+
+  it("parses added lines across files", () => {
+    const diff = [
+      "diff --git a/u.ts b/u.ts", "--- a/u.ts", "+++ b/u.ts", "@@ -1 +2 @@", "+first",
+      "diff --git a/v.ts b/v.ts", "--- a/v.ts", "+++ b/v.ts", "@@ -4 +5 @@", "+second",
+    ].join("\n");
+
+    expect(parseAddedLineNumbers(diff)).toEqual(new Map([["u.ts", new Set([2])], ["v.ts", new Set([5])]]));
+  });
+
+  it("parses a hunk header without counts", () => {
+    const diff = ["diff --git a/u.ts b/u.ts", "--- a/u.ts", "+++ b/u.ts", "@@ -3 +3 @@", "+added"].join("\n");
+
+    expect(parseAddedLineNumbers(diff)).toEqual(new Map([["u.ts", new Set([3])]]));
+  });
+
+  it("returns an empty set for a deletion-only hunk", () => {
+    const diff = ["diff --git a/u.ts b/u.ts", "--- a/u.ts", "+++ b/u.ts", "@@ -3 +2,0 @@", "-removed"].join("\n");
+
+    expect(parseAddedLineNumbers(diff)).toEqual(new Map([["u.ts", new Set()]]));
+  });
+
+  it("counts added lines whose content starts with a plus", () => {
+    const diff = ["diff --git a/u.ts b/u.ts", "--- a/u.ts", "+++ b/u.ts", "@@ -1 +1,2 @@", "+++ x", "+next"].join("\n");
+
+    expect(parseAddedLineNumbers(diff)).toEqual(new Map([["u.ts", new Set([1, 2])]]));
+  });
+
+  it("resets the file name before a headerless next diff", () => {
+    const diff = ["diff --git a/u.ts b/u.ts", "--- a/u.ts", "+++ b/u.ts", "@@ -1 +1 @@", "+first", "diff --git a/v.ts b/v.ts", "@@ -3 +3 @@", "+second"].join("\n");
+
+    expect(parseAddedLineNumbers(diff)).toEqual(new Map([["u.ts", new Set([1])], ["", new Set([3])]]));
+  });
+
+  it("does not treat a partial file prefix as a file header", () => {
+    expect(parseAddedLineNumbers("+++ a/other.ts\n@@ -1 +1 @@\n+added")).toEqual(new Map([["", new Set([1])]]));
+  });
+
+  it("drops the tab git appends after a path with a space", () => {
+    expect(parseAddedLineNumbers("+++ b/my file.ts\t\n@@ -1 +1 @@\n+added")).toEqual(new Map([["my file.ts", new Set([1])]]));
+  });
+
+  it("ignores additions before the first hunk", () => {
+    expect(parseAddedLineNumbers("diff --git a/u.ts b/u.ts\n+++ b/u.ts\n+header text")).toEqual(new Map());
+  });
+
+  it("advances only for context lines in a hunk", () => {
+    const diff = ["@@ -1,2 +1,2 @@", "-removed", "\\ No newline at end of file", " context", "+added"].join("\n");
+
+    expect(parseAddedLineNumbers(diff)).toEqual(new Map([["", new Set([2])]]));
+  });
+
+  it("parses additions in a new file", () => {
+    const diff = ["diff --git a/u.ts b/u.ts", "new file mode 100644", "--- /dev/null", "+++ b/u.ts", "@@ -0,0 +1,2 @@", "+first", "+second"].join("\n");
+
+    expect(parseAddedLineNumbers(diff)).toEqual(new Map([["u.ts", new Set([1, 2])]]));
   });
 
   it("parses added and changed lines from multiple diff hunks and omits deletions", () => {
