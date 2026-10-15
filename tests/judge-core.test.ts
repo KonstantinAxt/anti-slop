@@ -172,6 +172,18 @@ describe("LLM Judge Core Public API", () => {
     expect(result.findings.map((finding) => finding.line_range)).toEqual([{ start: 1, end: 2 }, { start: 2, end: 4 }]);
     expect(result.provenance.droppedFindings).toBe(2);
   });
+  it("keeps a finding on a marked line and drops one on an unmarked line", async () => {
+    const diff = ["diff --git a/u.ts b/u.ts", "--- a/u.ts", "+++ b/u.ts", "@@ -1,3 +1,4 @@", " unchanged", "+added", " context", " tail"].join("\n");
+    const payload = JSON.stringify({ verdict: "FLAG", findings: [
+      { file: "u.ts", line_range: { start: 2, end: 2 }, problem_category: "unnecessary_under_invariant", reason: "The marked line adds a redundant guard.", confidence: 0.9 },
+      { file: "u.ts", line_range: { start: 4, end: 4 }, problem_category: "unnecessary_under_invariant", reason: "The unmarked line is outside the change.", confidence: 0.9 },
+    ] });
+
+    const result = await reviewWithJudge({ diff, files: [{ path: "u.ts", content: "unchanged\nadded\ncontext\ntail" }] }, { provider: createStaticProvider([payload], TEST_MODEL) });
+
+    expect(result.findings.map((finding) => finding.line_range)).toEqual([{ start: 2, end: 2 }]);
+    expect(result.provenance.droppedFindings).toBe(1);
+  });
 
   it("drops a finding for a file outside the diff", async () => {
     const diff = ["diff --git a/u.ts b/u.ts", "--- a/u.ts", "+++ b/u.ts", "@@ -3 +3 @@", "+added"].join("\n");

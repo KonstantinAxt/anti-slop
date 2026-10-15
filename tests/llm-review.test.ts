@@ -89,8 +89,10 @@ describe("LLM review", () => {
 
     await runLlmReview(repoDir, SINCE_SOURCE, [targets[2] ?? ""], captureProvider(prompts));
 
-    expect(prompts[0]).toContain(`--- File: ${CHANGED_FILE} ---\n${AFTER}`);
+    expect(prompts[0]).toContain("<file path=\"src/u.ts\">");
+    expect(prompts[0]).toContain("\t3 + |   if (!u) return 'none';");
     expect(prompts[0]).not.toContain("// staged but uncommitted");
+
   });
 
   it("uses staged content when the working tree has further unstaged edits", async () => {
@@ -103,8 +105,10 @@ describe("LLM review", () => {
 
     await runLlmReview(repoDir, STAGED_SOURCE, [targets[2] ?? ""], captureProvider(prompts));
 
-    expect(prompts[0]).toContain(`--- File: ${CHANGED_FILE} ---\n${stagedContent}`);
+    expect(prompts[0]).toContain("<file path=\"src/u.ts\">");
+    expect(prompts[0]).toContain("// staged line");
     expect(prompts[0]).not.toContain("// unstaged line");
+
   });
 
   it("skips files deleted from the new side of a staged diff", async () => {

@@ -448,9 +448,9 @@ export ANTI_SLOP_JUDGE_MODEL=claude-haiku-4-5-20251001            # optional; th
 anti-slop --since origin/main --llm-review
 ```
 
-- **What it reviews:** each changed `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs` or `.cjs` file with a non-empty diff gets one request after the normal scan. The judge reads content from the diff's new side: `HEAD` for `--since` or the index for `--staged`.
+- **What it reviews:** each changed `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs` or `.cjs` file with a non-empty diff gets one request after the normal scan. The judge sees one numbered view of the file from the diff's new side, from `HEAD` for `--since` or the index for `--staged`. Added lines have a `+` marker. Removed lines have a `-` marker and no line number.
 - **Change summary:** every request starts with a shared header that lists changed files, added and removed line counts, and changed top-level declarations. It also lists commit subjects for `--since` runs. Staged runs omit subjects. The header is capped at 800 characters. It states intent, not evidence. The judge bases findings on code.
-- **Changed-line filter:** the judge keeps findings only when their line range overlaps a newly added line in the diff.
+- **Changed-line filter:** the judge keeps findings only when their line range overlaps a newly added line in the diff. This filter remains in place after the numbered view marks added lines.
 - **Advisory only:** findings are warnings with check `llm-review` and rule `unnecessary-under-invariant`. They never change the exit code.
 - **Finding metadata:** `--json` includes `confidence` (0 to 1) and `endLine` for judge findings. In `--llm` output confidence is shown, and a line range is shown when it spans multiple lines.
 - **Abstentions are visible:** the terminal and `--llm` output end with one summary line, for example `LLM review (advisory): Reviewed 4 files with claude-haiku-4-5-20251001: 1 findings, 1 abstained (TIMEOUT 1)`. When findings are dropped by the changed-line filter, the summary ends with `, N off-change dropped`. `--json` has the same text in `checks["llm-review"].reason`. A timeout, provider error or malformed answer never reads as a clean review, and never hides deterministic findings.
@@ -464,15 +464,15 @@ The default model passed a pre-registered evaluation with blind human rating: ex
 
 #### API
 
-`reviewWithJudge(input, { provider })` reviews one diff and its files. Use `createOpenAICompatibleProvider({ baseUrl, apiKey, model })` for a provider. The library itself reads no environment variables.
+`reviewWithJudge(input, { provider })` reviews one diff and its files. The provider sees a numbered view of each file, with added and removed lines marked. Use `createOpenAICompatibleProvider({ baseUrl, apiKey, model })` for a provider. The library itself reads no environment variables.
 
 #### Purpose and Rubric
 
-The judge targets a single semantic failure mode: `unnecessary_under_invariant`. This flags newly added defensive checks, fallbacks, or redundant guards that visible type contracts, callers, or earlier guards in the changed files already rule out.
+The judge targets a single semantic failure mode: `unnecessary_under_invariant`. This flags newly added defensive checks, fallbacks, or redundant guards that visible type contracts, callers, or earlier guards in the numbered file already rule out.
 
-- **FLAG**: The code is redundant under an invariant visible in the diff or provided files.
+- **FLAG**: The code is redundant under an invariant visible in the numbered file.
 - **ALLOW**: The check occurs at a real trust boundary (for example, parsing external input, untyped JavaScript, or unknown data).
-- **ABSTAIN (NEEDS_HUMAN_ATTENTION)**: The invariant would live only outside the provided files. The judge never guesses unseen code.
+- **ABSTAIN (NEEDS_HUMAN_ATTENTION)**: The invariant would live outside the numbered file. The judge never guesses unseen code.
 
 Judge findings are opinions and never alter deterministic `runAntiSlop` results.
 
@@ -485,12 +485,12 @@ The caller provides the base URL, API key and model name. Only the CLI reads the
 Before transmitting prompts to the remote provider:
 - **Sensitive Files Dropped**: Files matching `.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, and SSH keys (`id_rsa*`) are completely dropped.
 - **Secret Redaction**: Common secret token formats (AWS keys, GitHub tokens, API keys starting with `sk-`, JWTs, Bearer headers, PEM blocks) and high-entropy string assignments to variables containing key, secret, token, or password are masked with `[REDACTED]`.
-- **Blinded Evaluation**: Only the redacted git diff and redacted file contents are sent. Deterministic findings, labels, and rule results are never included in the prompt.
+- **Blinded Evaluation:** Only the redacted change summary and numbered file views are sent. Deterministic findings, labels, and rule results are never included in the prompt.
 
 #### Abstain Reasons
 
 The judge never throws for network or model failures. Instead, it returns an `ABSTAIN` disposition with one of the following reasons:
-- `NEEDS_HUMAN_ATTENTION`: The changed code cannot be verified with the provided files alone.
+- `NEEDS_HUMAN_ATTENTION`: The changed code cannot be verified with the numbered file alone.
 - `TOKEN_CEILING`: The input prompt exceeds the configured token ceiling (default: 12000 estimated tokens). The remote provider is not called.
 - `TIMEOUT`: The provider failed to respond within the configured timeout (default: 25000 ms).
 - `NETWORK_ERROR`: Network connectivity failed or connection was refused.
