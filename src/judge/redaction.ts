@@ -156,6 +156,7 @@ function maskSecretsInText(input: string): MaskResult {
 export interface RedactedInput {
   diff: string;
   files: { path: string; content: string }[];
+  summary?: string;
   droppedFiles: string[];
   redactions: number;
 }
@@ -163,6 +164,7 @@ export interface RedactedInput {
 export function redactJudgeInput(input: {
   diff: string;
   files: { path: string; content: string }[];
+  summary?: string;
 }): RedactedInput {
   const droppedFiles: string[] = [];
   const keptFiles: { path: string; content: string }[] = [];
@@ -183,10 +185,13 @@ export function redactJudgeInput(input: {
 
   const maskedDiff = maskSecretsInText(input.diff);
   totalRedactions += maskedDiff.count;
+  const maskedSummary = input.summary === undefined ? undefined : maskSecretsInText(input.summary);
+  totalRedactions += maskedSummary?.count ?? 0;
 
   return {
     diff: maskedDiff.text,
     files: keptFiles,
+    ...(maskedSummary === undefined ? {} : { summary: maskedSummary.text }),
     droppedFiles,
     redactions: totalRedactions,
   };

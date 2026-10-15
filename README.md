@@ -449,6 +449,7 @@ anti-slop --since origin/main --llm-review
 ```
 
 - **What it reviews:** each changed `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs` or `.cjs` file with a non-empty diff gets one request after the normal scan. The judge reads content from the diff's new side: `HEAD` for `--since` or the index for `--staged`.
+- **Change summary:** every request starts with a shared header that lists changed files, added and removed line counts, and changed top-level declarations. It also lists commit subjects for `--since` runs. Staged runs omit subjects. The header is capped at 800 characters. It states intent, not evidence. The judge bases findings on code.
 - **Changed-line filter:** the judge keeps findings only when their line range overlaps a newly added line in the diff.
 - **Advisory only:** findings are warnings with check `llm-review` and rule `unnecessary-under-invariant`. They never change the exit code.
 - **Finding metadata:** `--json` includes `confidence` (0 to 1) and `endLine` for judge findings. In `--llm` output confidence is shown, and a line range is shown when it spans multiple lines.

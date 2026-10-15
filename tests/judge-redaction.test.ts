@@ -48,4 +48,24 @@ describe("LLM Judge Secret Redaction", () => {
 
     expect(receivedUserPrompt.includes("[REDACTED]")).toBe(true);
   });
+  it("redacts secrets in summaries and counts each masked secret", async () => {
+    let receivedUserPrompt = "";
+    const secret = "ghp_0123456789abcdef0123456789abcdef0123";
+    const provider = {
+      name: "inspecting-provider",
+      model: "test-model",
+      endpoint: "test://mock",
+      async complete(req: { user: string }): Promise<{ text: string }> {
+        receivedUserPrompt = req.user;
+
+        return { text: JSON.stringify({ verdict: "ALLOW", findings: [] }) };
+      },
+    };
+
+    const result = await reviewWithJudge({ diff: "+const value = 1;", files: [], summary: `Commit: ${secret}` }, { provider });
+
+    expect(receivedUserPrompt).toContain("Commit: [REDACTED]");
+    expect(receivedUserPrompt).not.toContain(secret);
+    expect(result.provenance.redactions).toBe(1);
+  });
 });
