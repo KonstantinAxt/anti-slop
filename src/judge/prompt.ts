@@ -69,7 +69,10 @@ export const SCHEMA_SHA256 = sha256(JSON.stringify(JUDGE_SCHEMA));
 
 export function buildUserPrompt(diff: string, files: { path: string; content: string }[], summary?: string): string {
   const formatted = files.map((file) => `--- File: ${file.path} ---\n${file.content}`).join("\n\n");
-
   const summaryBlock = summary === undefined ? "" : `<change_summary>\n${summary}\n</change_summary>\n\n`;
-  return USER_TEMPLATE.replace("{{SUMMARY_BLOCK}}", summaryBlock).replace("{{DIFF}}", diff).replace("{{FILES}}", formatted);
+
+  return USER_TEMPLATE
+    .replace("{{SUMMARY_BLOCK}}", () => summaryBlock)
+    .replace("{{DIFF}}", () => diff)
+    .replace("{{FILES}}", () => formatted);
 }

@@ -64,6 +64,37 @@ describe("judge change summary", () => {
     ].join("\n"));
   });
 
+  it("lists changed declarations when the summary is built from a subdirectory", () => {
+    createRepo();
+    const nestedDir = path.join(repoDir, "src/nested");
+    fs.mkdirSync(nestedDir);
+    fs.writeFileSync(path.join(nestedDir, "example.ts"), "export function nestedFeature() {\n  return 1;\n}\n");
+    git("add", "src/nested/example.ts");
+    git("commit", "-qm", "Add nested file");
+    fs.writeFileSync(path.join(nestedDir, "example.ts"), "export function nestedFeature() {\n  return 2;\n}\n");
+    git("add", "src/nested/example.ts");
+
+    expect(buildChangeSummary(nestedDir, { kind: "staged" })).toBe([
+      "Change summary:",
+      "Files:",
+      "- example.ts (+1 -1): nestedFeature",
+    ].join("\n"));
+  });
+
+  it("lists a staged rename and its declaration names", () => {
+    createRepo();
+    git("mv", "src/a.ts", "src/renamed.ts");
+    fs.writeFileSync(path.join(repoDir, "src/renamed.ts"), "function alpha() {\n  return 5;\n}\n");
+    git("add", "src/renamed.ts");
+
+    expect(buildChangeSummary(repoDir, { kind: "staged" })).toBe([
+      "Change summary:",
+      "Files:",
+      "- src/a.ts (+0 -3)",
+      "- src/renamed.ts (+3 -0): alpha",
+    ].join("\n"));
+  });
+
   it("starts every review request with the whole-change summary", async () => {
     createRepo();
     const requests: JudgeCompletionRequest[] = [];
@@ -202,6 +233,24 @@ describe("judge change summary", () => {
     expect(buildChangeSummary(repoDir, { kind: "since", ref: "HEAD" })).toBe([
       "Change summary:",
       "Files:",
+    ].join("\n"));
+  });
+
+  it("preserves replacement sequences in change subjects and diffs", () => {
+    expect(buildUserPrompt("diff $' TOKEN", [], "Subject $' TOKEN")).toBe([
+      "<change_summary>",
+      "Subject $' TOKEN",
+      "</change_summary>",
+      "",
+      "Please review the following git diff and associated files.",
+      "",
+      "<git_diff>",
+      "diff $' TOKEN",
+      "</git_diff>",
+      "",
+      "<files>",
+      "",
+      "</files>",
     ].join("\n"));
   });
 

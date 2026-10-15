@@ -116,7 +116,7 @@ function truncateSummary(fileLines: string[], subjects: string[]): string {
 
 export function buildChangeSummary(cwd: string, source: ReviewSource): string {
   const reviewSource = resolveReviewDiffSource(source);
-  const numstat = execFileSync("git", ["diff", ...reviewSource.args, "--numstat"], { cwd, encoding: "utf-8", maxBuffer: Infinity });
+  const numstat = execFileSync("git", ["diff", ...reviewSource.args, "--no-renames", "--relative", "--numstat"], { cwd, encoding: "utf-8", maxBuffer: Infinity });
   const files = parseNumstat(numstat);
   const fileLines = changedFileLines(cwd, reviewSource, files);
   const subjects = commitSubjects(cwd, source);
